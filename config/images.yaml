@@ -14,7 +14,7 @@ sources:
   # PyTorch 镜像源仓库
   - name: pytorch
     url: https://gitcode.com/kerer-sk/pytorch.git
-    branch: main
+    branch: master
 
 # 镜像构建配置
 images:
