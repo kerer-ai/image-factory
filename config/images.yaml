@@ -11,38 +11,32 @@ global:
 
 # 源仓库列表
 sources:
-  # 示例：公开仓库
-  - name: base-images
-    url: https://github.com/your-org/base-images.git
+  # PyTorch 镜像源仓库
+  - name: pytorch
+    url: https://gitcode.com/kerer-sk/pytorch.git
     branch: main
-
-  # 示例：私有仓库（需要配置 Deploy Key）
-  # - name: private-repo
-  #   url: git@github.com:your-org/private-repo.git
-  #   branch: main
-  #   deploy_key: SSH_DEPLOY_KEY_PRIVATE
 
 # 镜像构建配置
 images:
-  # 示例：CentOS 9 + Python
-  - name: centos9-python
-    source: base-images
-    dockerfile: python/Dockerfile
+  # PyTorch ARM 版本
+  - name: pytorch-arm
+    source: pytorch
+    dockerfile: ci/docker/ARM/Dockerfile
     tags:
       - latest
-      - "3.12"
-    build_args:
-      PYTHON_VERSION: "3.12"
+      - "2.0"
+    platforms:
+      - linux/arm64
 
-  # 示例：CentOS 9 + Golang
-  - name: centos9-golang
-    source: base-images
-    dockerfile: golang/Dockerfile
+  # PyTorch X86 版本
+  - name: pytorch-x86
+    source: pytorch
+    dockerfile: ci/docker/X86/Dockerfile
     tags:
       - latest
-      - "1.21"
-    build_args:
-      GO_VERSION: "1.21"
+      - "2.0"
+    platforms:
+      - linux/amd64
 
 # 构建配置
 build:
