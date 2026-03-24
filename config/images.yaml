@@ -18,25 +18,25 @@ sources:
 
 # 镜像构建配置
 images:
-  # PyTorch ARM 版本
-  - name: pytorch-arm
-    source: pytorch
-    dockerfile: ci/docker/ARM/Dockerfile
-    tags:
-      - latest
-      - "2.0"
-    platforms:
-      - linux/arm64
-
-  # PyTorch X86 版本
-  - name: pytorch-x86
+  # PyTorch X86 版本 (基于 manylinux-builder:cpu-2.1)
+  - name: pytorch
     source: pytorch
     dockerfile: ci/docker/X86/Dockerfile
     tags:
-      - latest
-      - "2.0"
+      - x86-manylinux2.1-latest
+      - x86-manylinux2.1-2.0
     platforms:
       - linux/amd64
+
+  # PyTorch ARM 版本 (基于 manylinux2014_aarch64)
+  - name: pytorch
+    source: pytorch
+    dockerfile: ci/docker/ARM/Dockerfile
+    tags:
+      - arm-manylinux2014-latest
+      - arm-manylinux2014-2.0
+    platforms:
+      - linux/arm64
 
 # 构建配置
 build:
