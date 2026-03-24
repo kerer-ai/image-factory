@@ -80,14 +80,6 @@ jobs:
           pip install pyyaml
           python3 scripts/validate-config.py config/images.yaml
 
-      - name: Setup SSH Agent
-        if: steps.check.outputs.is_temp_mode != 'true'
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: |
-            ${{ secrets.SSH_DEPLOY_KEY_1 }}
-            ${{ secrets.SSH_DEPLOY_KEY_2 }}
-
       - name: Clone source repositories
         run: |
           mkdir -p sources
