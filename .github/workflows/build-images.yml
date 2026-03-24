@@ -178,7 +178,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
-        if: github.event.inputs.skip_scan != 'true'
+        if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
@@ -190,7 +190,7 @@ jobs:
           output: 'trivy-report.txt'
 
       - name: Upload Trivy scan results
-        if: always()
+        if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ matrix.image_name }}
@@ -198,7 +198,7 @@ jobs:
           retention-days: 30
 
       - name: Generate SBOM (SPDX format)
-        if: github.event.inputs.skip_sbom != 'true'
+        if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
@@ -206,7 +206,7 @@ jobs:
           output: 'sbom-${{ matrix.image_name }}.spdx.json'
 
       - name: Generate SBOM (CycloneDX format)
-        if: github.event.inputs.skip_sbom != 'true'
+        if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
@@ -214,7 +214,7 @@ jobs:
           output: 'sbom-${{ matrix.image_name }}.cdx.json'
 
       - name: Upload SBOM artifacts
-        if: always() && github.event.inputs.skip_sbom != 'true'
+        if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ matrix.image_name }}
