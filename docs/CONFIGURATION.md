@@ -19,13 +19,15 @@ config/<project>-images.yml
 sources:
   - name: <名称>
     url: <仓库地址>
-    branch: <分支>
+    branch: <分支>      # 可选，默认 main
+    ref: <引用>         # 可选，优先于 branch
 
 # 镜像定义
 images:
   - name: <镜像名>
     source: <引用的源>
-    dockerfile: <Dockerfile路径>
+    dockerfile: <Dockerfile路径>   # 可选，默认 Dockerfile
+    context: <构建上下文>          # 可选，默认仓库根目录
     tags:
       - <标签1>
       - <标签2>
@@ -34,18 +36,6 @@ images:
       - <平台2>
     build_args:
       <键>: <值>
-
-# 构建配置（可选）
-build:
-  severity: <严重级别>
-  timeout: <超时时间>
-
-# SBOM 配置（可选）
-sbom:
-  enabled: <是否启用>
-  formats:
-    - <格式1>
-    - <格式2>
 ```
 
 ---
@@ -61,6 +51,7 @@ sbom:
 | `name` | string | ✅ | - | 源仓库名称，作为唯一标识 |
 | `url` | string | ✅ | - | Git 仓库地址（支持 HTTPS/SSH） |
 | `branch` | string | ❌ | `main` | 分支名或标签名 |
+| `ref` | string | ❌ | - | 分支名、标签名或 commit SHA（优先于 branch） |
 
 **示例**：
 
@@ -76,6 +67,11 @@ sources:
     url: https://github.com/tensorflow/tensorflow.git
     branch: v2.12.0
 
+  # 使用 commit SHA
+  - name: myapp
+    url: https://github.com/org/myapp.git
+    ref: abc123def456
+
   # 私有仓库（SSH）
   - name: private-repo
     url: git@github.com:org/private-repo.git
@@ -84,7 +80,7 @@ sources:
 
 **注意事项**：
 - `name` 必须唯一，后续 `images` 配置通过此名称引用
-- `branch` 可以是分支名、标签名或 commit SHA（需使用 `ref` 字段）
+- `ref` 优先于 `branch`，可用于指定精确的 commit SHA
 
 ---
 
@@ -99,7 +95,7 @@ sources:
 | `dockerfile` | string | ❌ | `Dockerfile` | Dockerfile 相对于仓库根目录的路径 |
 | `context` | string | ❌ | 仓库根目录 | Docker 构建上下文路径 |
 | `tags` | list | ❌ | `['latest']` | 镜像标签列表 |
-| `platforms` | list | ❌ | `['linux/amd64']` | 目标构建平台 |
+| `platforms` | list | ❌ | `['linux/amd64', 'linux/arm64']` | 目标构建平台 |
 | `build_args` | map | ❌ | `{}` | 构建参数 |
 
 **示例**：
@@ -250,62 +246,50 @@ FROM nvidia/cuda:${CUDA_VERSION}-devel
 
 ---
 
-### build（可选）
+### 标签模板变量
 
-构建行为配置。
+在 `tags` 中支持以下模板变量，构建时会自动替换：
 
-| 字段 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `severity` | string | ❌ | `CRITICAL,HIGH` | 漏洞扫描严重级别 |
-| `timeout` | int | ❌ | `30` | 构建超时时间（分钟） |
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `{{ sha_short }}` | 短 commit SHA（前7位） | `abc123d` |
+| `{{ sha }}` | 完整 commit SHA | `abc123def456...` |
+| `{{ date }}` | 当前日期（YYYYMMDD） | `20260325` |
+| `{{ branch }}` | 分支名 | `main` |
 
 **示例**：
 
 ```yaml
-build:
-  severity: CRITICAL,HIGH,MEDIUM  # 扫描更多级别
-  timeout: 60                      # 延长超时时间
+tags:
+  - '{{ branch }}-{{ date }}'
+  - 'sha-{{ sha_short }}'
+# 构建后: main-20260325, sha-abc123d
 ```
-
-**severity 可选值**：
-
-| 值 | 说明 |
-|---|------|
-| `CRITICAL` | 严重漏洞 |
-| `HIGH` | 高危漏洞 |
-| `MEDIUM` | 中危漏洞 |
-| `LOW` | 低危漏洞 |
-| `UNKNOWN` | 未知级别 |
-
-多个级别用逗号分隔。
 
 ---
 
-### sbom（可选）
+### Dockerfile 元数据
 
-软件物料清单（SBOM）配置。
+可在 Dockerfile 顶部通过注释定义默认配置，减少 YAML 配置：
 
-| 字段 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `enabled` | bool | ❌ | `true` | 是否生成 SBOM |
-| `formats` | list | ❌ | `['spdx', 'cyclonedx']` | SBOM 格式 |
+```dockerfile
+# image-name: myapp
+# image-tags: latest, v1.0
+# platforms: linux/amd64, linux/arm64
 
-**示例**：
-
-```yaml
-sbom:
-  enabled: true
-  formats:
-    - spdx       # SPDX 格式
-    - cyclonedx  # CycloneDX 格式
+FROM ubuntu:22.04
+...
 ```
 
-**SBOM 格式说明**：
+**支持的注释**：
 
-| 格式 | 文件扩展名 | 标准 |
-|------|------------|------|
-| `spdx` | `.spdx.json` | ISO/IEC 5962:2021 |
-| `cyclonedx` | `.cdx.json` | OWASP CycloneDX |
+| 注释 | 说明 | 优先级 |
+|------|------|--------|
+| `# image-name:` | 镜像名称 | YAML `name` 优先 |
+| `# image-tags:` | 镜像标签（逗号分隔） | YAML `tags` 优先 |
+| `# platforms:` | 构建平台（逗号分隔） | YAML `platforms` 优先 |
+
+当 YAML 配置中未指定时，会使用 Dockerfile 注释中的值作为默认值。
 
 ---
 
@@ -345,16 +329,6 @@ images:
       - linux/arm64
     build_args:
       PYTHON_VERSION: "3.10"
-
-build:
-  severity: CRITICAL,HIGH
-  timeout: 30
-
-sbom:
-  enabled: true
-  formats:
-    - spdx
-    - cyclonedx
 ```
 
 ### 示例 2: 多项目配置
@@ -404,7 +378,13 @@ images:
 在提交配置前，使用校验工具验证：
 
 ```bash
-python3 scripts/validate-config.py config/<project>-images.yml
+# 使用 uv 运行（推荐）
+uv run python scripts/validate-config.py config/<project>-images.yml
+
+# 或激活虚拟环境后运行
+source .venv/bin/activate  # macOS / Linux
+# .venv\Scripts\activate   # Windows
+python scripts/validate-config.py config/<project>-images.yml
 ```
 
 校验内容包括：
