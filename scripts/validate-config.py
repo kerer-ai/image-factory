@@ -22,7 +22,7 @@ def validate_config(config_path: str) -> bool:
 
     # 解析 YAML
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
     except yaml.YAMLError as e:
         print(f"Error: Invalid YAML format: {e}")
@@ -69,7 +69,7 @@ def validate_config(config_path: str) -> bool:
             print(f"  - {e}")
         return False
 
-    print("\n✓ Config validation passed!")
+    print("\n[OK] Config validation passed!")
     print(f"  Sources: {len(config.get('sources', []))}")
     print(f"  Images:  {len(config.get('images', []))}")
 

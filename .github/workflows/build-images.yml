@@ -33,7 +33,7 @@ on:
 
 env:
   REGISTRY: quay.io
-  ORG: ${{ vars.QUAY_ORG || 'kerer-ai' }}
+  ORG: ${{ vars.QUAY_ORG || 'kerer' }}
 
 jobs:
   # ==================== 准备阶段 ====================

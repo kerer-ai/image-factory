@@ -1,0 +1,46 @@
+# Triton-Ascend 镜像构建配置
+# 项目: https://gitcode.com/Ascend/triton-ascend.git
+
+# 源仓库列表
+sources:
+  - name: triton-ascend
+    url: https://gitcode.com/Ascend/triton-ascend.git
+    branch: main
+
+# 镜像构建配置
+images:
+  # Triton-Ascend X86 版本 - A3 芯片 (默认)
+  - name: triton-ascend
+    source: triton-ascend
+    dockerfile: docker/Dockerfile
+    tags:
+      - x86-a3-latest
+    platforms:
+      - linux/amd64
+    build_args:
+      CHIP_TYPE: A3
+      CANN_VERSION: "8.5.0"
+
+  # Triton-Ascend X86 版本 - A2 芯片
+  - name: triton-ascend
+    source: triton-ascend
+    dockerfile: docker/Dockerfile
+    tags:
+      - x86-a2-latest
+    platforms:
+      - linux/amd64
+    build_args:
+      CHIP_TYPE: A2
+      CANN_VERSION: "8.5.0"
+
+# 构建配置
+build:
+  severity: CRITICAL,HIGH
+  timeout: 60
+
+# SBOM 配置
+sbom:
+  enabled: true
+  formats:
+    - spdx
+    - cyclonedx
