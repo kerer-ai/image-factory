@@ -13,27 +13,30 @@
 
 ```
 image-factory/
+├── .claude/skills/
+│   └── add-image-config.md   # Claude Code skill
 ├── .github/workflows/
-│   └── build-images.yml     # GitHub Actions 构建工作流
+│   └── build-images.yml      # GitHub Actions 构建工作流
 ├── config/
-│   └── *-images.yml         # 镜像构建配置文件
+│   └── *-images.yml          # 镜像构建配置文件
 ├── docs/
-│   ├── ARCHITECTURE.md      # 架构设计文档
-│   ├── CONFIGURATION.md     # 配置说明文档
-│   └── PRD.md               # 产品需求文档
+│   ├── ARCHITECTURE.md       # 架构设计文档
+│   ├── CONFIGURATION.md      # 配置说明文档
+│   └── PRD.md                # 产品需求文档
 ├── scripts/
-│   ├── clone-sources.py     # 克隆源仓库
-│   ├── scan-dockerfiles.py  # 生成构建矩阵
-│   └── validate-config.py   # 校验配置文件
-├── CLAUDE.md                # Claude Code 开发指南
-├── CONTRIBUTING.md          # 贡献指南
-└── README.md                # 本文档
+│   ├── clone-sources.py      # 克隆源仓库
+│   ├── scan-dockerfiles.py   # 生成构建矩阵
+│   └── validate-config.py    # 校验配置文件
+├── CLAUDE.md                 # Claude Code 开发指南
+├── CONTRIBUTING.md           # 贡献指南
+└── README.md                 # 本文档
 ```
 
 ## 文件说明
 
 | 文件/目录 | 说明 |
 |-----------|------|
+| `.claude/skills/add-image-config.md` | Claude Code skill，自动化添加镜像配置 |
 | `.github/workflows/build-images.yml` | GitHub Actions 工作流定义 |
 | `config/*-images.yml` | 镜像构建配置，每个项目一个文件 |
 | `scripts/clone-sources.py` | 根据配置克隆源代码仓库 |
@@ -43,6 +46,29 @@ image-factory/
 | `docs/CONFIGURATION.md` | 配置项详细说明 |
 
 ## 快速开始
+
+### 方式一：使用 Claude Code 自动添加
+
+如果你使用 [Claude Code](https://claude.ai/code)，可以直接告诉 Claude：
+
+```
+帮我添加 xxx 仓库的镜像配置
+```
+
+Claude 会自动执行以下步骤：
+1. 克隆目标仓库并分析 Dockerfile 位置和构建参数
+2. 生成符合规范的配置文件 `config/<project>-images.yml`
+3. 验证配置格式
+4. 提交并推送到远端
+
+**支持的触发方式**：
+- "帮我添加 xxx 仓库的镜像配置"
+- "给 xxx 项目添加镜像构建"
+- "新增 xxx 的镜像配置"
+
+详见 [.claude/skills/add-image-config.md](.claude/skills/add-image-config.md)。
+
+### 方式二：手动添加
 
 1. 在 `config/` 目录创建配置文件
 2. 本地校验：`python3 scripts/validate-config.py config/<project>-images.yml`
