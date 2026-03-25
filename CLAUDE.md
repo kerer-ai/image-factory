@@ -108,16 +108,33 @@ gh run list --workflow=build-images.yml --limit 5
 
 ## 构建缓存
 
-使用双重缓存：
-1. **Registry 缓存**：`buildcache-amd64` / `buildcache-arm64` 标签
-2. **GitHub Actions 缓存**：用于层复用
+使用 GitHub Actions 缓存加速构建：
+- 缓存类型：`type=gha,mode=max`
+- 缓存范围：所有构建层
+- 失效策略：7 天未访问自动清理
+
+## 标签策略
+
+所有镜像标签自动追加时间戳后缀 `yyyymmddHHMMSS`：
+- 配置：`tags: [latest]`
+- 实际：`latest-20260325100000`
+
+## 手动触发参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `config` | string | 空（构建所有） | 配置文件名称 |
+| `push` | boolean | true | 是否推送镜像 |
+| `skip_scan` | boolean | false | 跳过安全扫描 |
+| `skip_sbom` | boolean | false | 跳过 SBOM 生成 |
 
 ## 构建产物
 
-产物使用第一个标签命名（非镜像名），避免冲突：
-- `trivy-report-<tag>.txt`
-- `sbom-<tag>.spdx.json`
-- `sbom-<tag>.cdx.json`
+产物命名包含标签和平台，确保唯一性：
+- `trivy-report-<tag>-<platform>.txt`
+- `sbom-<tag>-<platform>.spdx.json`
+- `sbom-<tag>-<platform>.cdx.json`
+- `build-info-<tag>-<platform>/info.json`
 
 ## 必需的 GitHub Secrets
 

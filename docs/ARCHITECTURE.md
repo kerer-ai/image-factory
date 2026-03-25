@@ -150,7 +150,7 @@
 │                                                                              │
 │  特性:                                                                       │
 │  - fail-fast: false (一个失败不影响其他)                                     │
-│  - 双重缓存: Registry 缓存 + GitHub Actions 缓存                             │
+│  - GHA 缓存: 加速构建层复用                                                   │
 │  - 时间戳标签: 自动拼接 yyyymmddHHMMSS                                       │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -257,7 +257,7 @@ python3 scripts/clone-sources.py \
 **用途**: 扫描 Dockerfile 并生成构建矩阵
 
 **输入参数**:
-- `--config`: 配置文件路径
+- `--config`: 配置文件路径（支持多个，`nargs='+'`）
 - `--sources`: 源码目录
 - `--output`: 输出 JSON 文件路径
 
@@ -304,26 +304,17 @@ python3 scripts/clone-sources.py \
 
 **使用示例**:
 ```bash
+# 单个配置文件
 python3 scripts/scan-dockerfiles.py \
   --config config/pytorch-images.yml \
   --sources sources/ \
   --output matrix.json
-```
 
----
-
-### scripts/list-configs.py
-
-**用途**: 列出所有可用的配置文件
-
-**输出**: JSON 格式的配置文件列表
-
-**使用示例**:
-```bash
-python3 scripts/list-configs.py
-
-# 输出
-{"configs": ["pytorch-images.yml", "tensorflow-images.yml"]}
+# 多个配置文件
+python3 scripts/scan-dockerfiles.py \
+  --config config/pytorch-images.yml config/triton-ascend-images.yml \
+  --sources sources/ \
+  --output matrix.json
 ```
 
 ---
@@ -430,18 +421,21 @@ sbom:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              双重缓存策略                                    │
+│                              GitHub Actions 缓存                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────┐     ┌─────────────────────────────┐
-│ Registry 缓存                │     │ GitHub Actions 缓存          │
-│                              │     │                              │
-│ buildcache-amd64 标签        │     │ GHA 内置缓存                 │
-│ buildcache-arm64 标签        │     │                              │
-│                              │     │                              │
-│ 跨构建共享                   │     │ 构建层缓存                   │
-│ 推送时生效                   │     │ 始终生效                     │
-└─────────────────────────────┘     └─────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GitHub Actions 缓存                                                          │
+│                                                                              │
+│ 缓存类型: type=gha,mode=max                                                  │
+│ 缓存范围: 所有构建层                                                          │
+│ 失效策略: 7 天未访问自动清理                                                  │
+│                                                                              │
+│ 优点:                                                                        │
+│ - 无需额外配置 Registry 缓存                                                 │
+│ - 跨构建共享缓存                                                             │
+│ - 构建速度显著提升                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -450,9 +444,12 @@ sbom:
 
 | 产物类型 | 命名格式 | 说明 | 保留时间 |
 |----------|----------|------|----------|
-| Trivy 扫描报告 | `trivy-report-<tag>.txt` | 漏洞扫描结果 | 30 天 |
-| SBOM (SPDX) | `sbom-<tag>.spdx.json` | SPDX 格式物料清单 | 30 天 |
-| SBOM (CycloneDX) | `sbom-<tag>.cdx.json` | CycloneDX 格式物料清单 | 30 天 |
+| Trivy 扫描报告 | `trivy-report-<tag>-<platform>.txt` | 漏洞扫描结果 | 30 天 |
+| SBOM (SPDX) | `sbom-<tag>-<platform>.spdx.json` | SPDX 格式物料清单 | 30 天 |
+| SBOM (CycloneDX) | `sbom-<tag>-<platform>.cdx.json` | CycloneDX 格式物料清单 | 30 天 |
+| Build info | `build-info-<tag>-<platform>/info.json` | 构建信息 | 1 天 |
+
+> 命名包含平台后缀，确保同名镜像不同平台时产物唯一。
 
 ---
 
@@ -482,4 +479,5 @@ sbom:
 - [README.md](../README.md) - 项目介绍和快速开始
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - 贡献指南
 - [CONFIGURATION.md](CONFIGURATION.md) - 配置说明文档
+- [LESSONS-LEARNED.md](LESSONS-LEARNED.md) - 错误案例记录
 - [PRD.md](PRD.md) - 产品需求文档
