@@ -208,21 +208,17 @@ jobs:
       - name: Set cache config
         id: cache
         run: |
+          # 始终使用 GHA 缓存作为读取源（更可靠）
+          CACHE_FROM="type=gha"
+
+          # 推送时同时写入 registry 缓存和 GHA 缓存
           if [ "${{ github.event.inputs.push }}" != "false" ]; then
-            CACHE_FROM="type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms == 'linux/amd64' && 'amd64' || 'arm64' }}
-          type=gha"
-            CACHE_TO="type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
-          type=gha,mode=max"
+            CACHE_TO="type=gha,mode=max"
           else
-            CACHE_FROM="type=gha"
             CACHE_TO="type=gha,mode=max"
           fi
-          echo "cache_from<<EOF" >> $GITHUB_OUTPUT
-          echo "$CACHE_FROM" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "cache_to<<EOF" >> $GITHUB_OUTPUT
-          echo "$CACHE_TO" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "cache_from=${CACHE_FROM}" >> $GITHUB_OUTPUT
+          echo "cache_to=${CACHE_TO}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
