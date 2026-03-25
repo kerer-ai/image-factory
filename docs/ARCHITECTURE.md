@@ -479,6 +479,7 @@ sbom:
 
 ## 相关文档
 
-- [README.md](README.md) - 项目介绍和快速开始
-- [CLAUDE.md](CLAUDE.md) - Claude Code 开发指南
+- [README.md](../README.md) - 项目介绍和快速开始
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - 贡献指南
+- [CONFIGURATION.md](CONFIGURATION.md) - 配置说明文档
 - [PRD.md](PRD.md) - 产品需求文档

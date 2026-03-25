@@ -34,8 +34,7 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 |------|------|
 | `scripts/clone-sources.py` | 从配置克隆源仓库 |
 | `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 并生成构建矩阵 JSON |
-| `scripts/validate-config.py` | 校验配置文件格式 |
-| `scripts/list-configs.py` | 列出所有可用配置文件 |
+| `scripts/validate-config.py` | 校验配置文件格式（本地开发工具） |
 
 ## 配置文件格式
 
@@ -87,9 +86,6 @@ images:
 # 校验配置
 python3 scripts/validate-config.py config/pytorch-images.yml
 
-# 列出所有配置
-python3 scripts/list-configs.py
-
 # 手动触发指定配置
 gh workflow run build-images.yml -f config=pytorch-images.yml -f push=true
 
@@ -124,3 +120,13 @@ gh run list --workflow=build-images.yml --limit 5
 ## 必需的 GitHub Variables
 
 - `QUAY_ORG`：quay.io 组织名
+
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| [README.md](README.md) | 项目说明和快速开始 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 配置说明文档 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计文档 |
+| [docs/PRD.md](docs/PRD.md) | 产品需求文档 |
