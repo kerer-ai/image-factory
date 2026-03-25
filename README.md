@@ -103,9 +103,9 @@ gh workflow run build-images.yml \
 
 | 产物 | 说明 |
 |------|------|
-| `trivy-report-<image>.txt` | 漏洞扫描报告 |
-| `sbom-<image>.spdx.json` | SPDX 格式 SBOM |
-| `sbom-<image>.cdx.json` | CycloneDX 格式 SBOM |
+| `trivy-report-<tag>.txt` | 漏洞扫描报告 |
+| `sbom-<tag>.spdx.json` | SPDX 格式 SBOM |
+| `sbom-<tag>.cdx.json` | CycloneDX 格式 SBOM |
 
 ## License
 

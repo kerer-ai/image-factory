@@ -188,14 +188,14 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-report.txt'
+          output: 'trivy-report-${{ matrix.first_tag }}.txt'
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report-${{ matrix.image_name }}
-          path: trivy-report.txt
+          name: trivy-report-${{ matrix.first_tag }}
+          path: trivy-report-${{ matrix.first_tag }}.txt
           retention-days: 30
 
       - name: Generate SBOM (SPDX format)
@@ -204,7 +204,7 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'spdx-json'
-          output: 'sbom-${{ matrix.image_name }}.spdx.json'
+          output: 'sbom-${{ matrix.first_tag }}.spdx.json'
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
@@ -212,14 +212,14 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'cyclonedx'
-          output: 'sbom-${{ matrix.image_name }}.cdx.json'
+          output: 'sbom-${{ matrix.first_tag }}.cdx.json'
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ matrix.image_name }}
+          name: sbom-${{ matrix.first_tag }}
           path: |
-            sbom-${{ matrix.image_name }}.spdx.json
-            sbom-${{ matrix.image_name }}.cdx.json
+            sbom-${{ matrix.first_tag }}.spdx.json
+            sbom-${{ matrix.first_tag }}.cdx.json
           retention-days: 30
