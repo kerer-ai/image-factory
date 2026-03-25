@@ -32,11 +32,10 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 
 | 脚本 | 用途 |
 |------|------|
-| `scripts/clone-sources.py` | 从配置或临时 URL 克隆源仓库 |
+| `scripts/clone-sources.py` | 从配置克隆源仓库 |
 | `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 并生成构建矩阵 JSON |
 | `scripts/validate-config.py` | 校验配置文件格式 |
 | `scripts/list-configs.py` | 列出所有可用配置文件 |
-| `scripts/detect-changed-configs.py` | 检测变更的配置文件 |
 
 ## 配置文件格式
 
@@ -97,11 +96,8 @@ gh workflow run build-images.yml -f config=pytorch-images.yml -f push=true
 # 构建所有配置
 gh workflow run build-images.yml -f push=true
 
-# 临时仓库构建
-gh workflow run build-images.yml \
-  -f repo_url=https://github.com/user/repo.git \
-  -f repo_dockerfile=Dockerfile \
-  -f push=false
+# 构建但不推送
+gh workflow run build-images.yml -f config=pytorch-images.yml -f push=false
 
 # 查看构建状态
 gh run list --workflow=build-images.yml --limit 5

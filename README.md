@@ -9,7 +9,6 @@
 - **多架构支持**：同时支持 x86_64 和 arm64 架构，使用原生 Runner 加速构建
 - **安全扫描**：Trivy 漏洞扫描 + SBOM 生成（漏洞不影响镜像推送）
 - **灵活触发**：定时构建 + 手动触发 + 配置变更触发
-- **临时仓库**：支持手动输入仓库 URL 一次性构建
 - **构建缓存**：Registry 缓存 + GitHub Actions 缓存双重加速
 
 ## 性能特性
@@ -86,9 +85,6 @@ images:
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `config` | string | 空 | 配置文件名称（如 pytorch-images.yml，留空构建所有） |
-| `repo_url` | string | 空 | 临时仓库地址 |
-| `repo_branch` | string | main | 临时仓库分支 |
-| `repo_dockerfile` | string | Dockerfile | Dockerfile 路径 |
 | `push` | boolean | true | 是否推送到仓库 |
 | `skip_scan` | boolean | false | 跳过安全扫描 |
 | `skip_sbom` | boolean | false | 跳过 SBOM 生成 |
@@ -125,23 +121,6 @@ vim config/myproject-images.yml
 - **自动**：推送配置文件变更自动触发
 - **手动**：GitHub Actions -> Run workflow -> 选择配置文件
 
-## 使用方式
-
-### 配置驱动模式
-
-创建 `config/xxx-images.yml` 配置文件，定义源仓库和镜像。
-
-### 临时仓库模式
-
-手动触发时输入仓库地址，无需修改配置：
-
-```
-repo_url: https://github.com/user/test-images.git
-repo_branch: main
-repo_dockerfile: Dockerfile
-push: false
-```
-
 ## 构建缓存
 
 系统使用双重缓存策略加速构建：
@@ -164,8 +143,7 @@ image-factory/
 │   ├── clone-sources.py    # 源仓库克隆脚本
 │   ├── scan-dockerfiles.py # Dockerfile 扫描脚本
 │   ├── validate-config.py  # 配置校验脚本
-│   ├── list-configs.py     # 列出所有配置文件
-│   └── detect-changed-configs.py  # 检测变更配置
+│   └── list-configs.py     # 列出所有配置文件
 └── README.md
 ```
 
@@ -181,10 +159,8 @@ python3 scripts/list-configs.py
 # 手动触发指定配置
 gh workflow run build-images.yml -f config=pytorch-images.yml
 
-# 临时仓库构建
-gh workflow run build-images.yml \
-  -f repo_url=https://github.com/user/test-images.git \
-  -f push=false
+# 手动触发，不推送镜像
+gh workflow run build-images.yml -f config=pytorch-images.yml -f push=false
 ```
 
 ## 构建产物

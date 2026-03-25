@@ -12,18 +12,6 @@ on:
         description: '配置文件名称 (如 pytorch-images.yml，留空构建所有)'
         required: false
         default: ''
-      repo_url:
-        description: '临时仓库地址 (公开仓库)'
-        required: false
-        default: ''
-      repo_branch:
-        description: '临时仓库分支'
-        required: false
-        default: 'main'
-      repo_dockerfile:
-        description: 'Dockerfile 路径'
-        required: false
-        default: 'Dockerfile'
       push:
         description: '是否推送到仓库'
         type: boolean
@@ -53,33 +41,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       configs: ${{ steps.detect.outputs.configs }}
-      is_temp_mode: ${{ steps.check.outputs.is_temp_mode }}
     steps:
       - name: Checkout image-factory
         uses: actions/checkout@v4
         with:
           fetch-depth: 2  # 需要获取历史来检测变更
 
-      - name: Check build mode
-        id: check
-        run: |
-          if [ -n "${{ github.event.inputs.repo_url }}" ]; then
-            echo "is_temp_mode=true" >> $GITHUB_OUTPUT
-            echo "Build mode: Temporary repository"
-          else
-            echo "is_temp_mode=false" >> $GITHUB_OUTPUT
-            echo "Build mode: Config-driven"
-          fi
-
       - name: Detect configs to build
         id: detect
         run: |
           pip install pyyaml
 
-          if [ -n "${{ github.event.inputs.repo_url }}" ]; then
-            # 临时仓库模式
-            configs='[]'
-          elif [ -n "${{ github.event.inputs.config }}" ]; then
+          if [ -n "${{ github.event.inputs.config }}" ]; then
             # 手动触发，指定配置文件
             config_file="config/${{ github.event.inputs.config }}"
             if [ -f "$config_file" ]; then
@@ -118,7 +91,7 @@ jobs:
   # ==================== 克隆源仓库 ====================
   clone:
     needs: prepare
-    if: needs.prepare.outputs.configs != '[]' || needs.prepare.outputs.is_temp_mode == 'true'
+    if: needs.prepare.outputs.configs != '[]'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.scan.outputs.matrix }}
@@ -129,43 +102,23 @@ jobs:
       - name: Clone source repositories
         run: |
           mkdir -p sources
-
-          if [ "${{ needs.prepare.outputs.is_temp_mode }}" = "true" ]; then
-            # 临时仓库模式
+          configs='${{ needs.prepare.outputs.configs }}'
+          for config in $(echo "$configs" | jq -r '.[]'); do
+            echo "Cloning sources from $config..."
             python3 scripts/clone-sources.py \
-              --output sources/ \
-              --repo-url "${{ github.event.inputs.repo_url }}" \
-              --repo-branch "${{ github.event.inputs.repo_branch }}"
-          else
-            # 配置驱动模式
-            configs='${{ needs.prepare.outputs.configs }}'
-            for config in $(echo "$configs" | jq -r '.[]'); do
-              echo "Cloning sources from $config..."
-              python3 scripts/clone-sources.py \
-                --config "$config" \
-                --output sources/
-            done
-          fi
+              --config "$config" \
+              --output sources/
+          done
 
       - name: Scan Dockerfiles and generate matrix
         id: scan
         run: |
-          if [ "${{ needs.prepare.outputs.is_temp_mode }}" = "true" ]; then
-            # 临时仓库模式
-            python3 scripts/scan-dockerfiles.py \
-              --sources sources/ \
-              --output matrix.json \
-              --repo-url "${{ github.event.inputs.repo_url }}" \
-              --repo-dockerfile "${{ github.event.inputs.repo_dockerfile }}"
-          else
-            # 配置驱动模式
-            configs='${{ needs.prepare.outputs.configs }}'
-            first_config=$(echo "$configs" | jq -r '.[0]')
-            python3 scripts/scan-dockerfiles.py \
-              --config "$first_config" \
-              --sources sources/ \
-              --output matrix.json
-          fi
+          configs='${{ needs.prepare.outputs.configs }}'
+          first_config=$(echo "$configs" | jq -r '.[0]')
+          python3 scripts/scan-dockerfiles.py \
+            --config "$first_config" \
+            --sources sources/ \
+            --output matrix.json
 
           matrix=$(cat matrix.json | jq -c '.matrix')
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT

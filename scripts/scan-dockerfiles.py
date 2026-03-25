@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-扫描所有源仓库中的 Dockerfile，生成构建矩阵
+扫描配置文件中定义的 Dockerfile，生成构建矩阵
 """
 
 import argparse
@@ -58,24 +58,6 @@ def parse_dockerfile_metadata(dockerfile_path: Path) -> Dict[str, Any]:
     return metadata
 
 
-def find_dockerfiles(source_dir: Path, dockerfile_path: str = None) -> List[Path]:
-    """查找 Dockerfile"""
-
-    if dockerfile_path:
-        specific_path = source_dir / dockerfile_path
-        if specific_path.exists():
-            return [specific_path]
-        return []
-
-    dockerfiles = []
-    for path in source_dir.rglob('Dockerfile'):
-        dockerfiles.append(path)
-    for path in source_dir.rglob('*.dockerfile'):
-        dockerfiles.append(path)
-
-    return dockerfiles
-
-
 def resolve_template_variables(tag: str, commit_sha: str, branch: str) -> str:
     """解析标签模板变量"""
 
@@ -115,121 +97,63 @@ def get_commit_sha(source_dir: Path) -> str:
 def generate_matrix(
     config_path: str,
     sources_dir: str,
-    output_path: str,
-    repo_url: str = None,
-    repo_dockerfile: str = None,
-    image_filter: str = None,
-    source_filter: str = None
+    output_path: str
 ):
     """生成构建矩阵"""
 
     matrix = []
-
     sources_path = Path(sources_dir)
 
-    # 临时仓库模式
-    if repo_url:
-        repo_name = repo_url.split('/')[-1].replace('.git', '')
-        source_dir = sources_path / repo_name
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    for image_config in config.get('images', []):
+        source_name = image_config['source']
+        source_dir = sources_path / source_name
 
         if not source_dir.exists():
-            print(f"Error: Cloned repo not found: {source_dir}")
-            return
+            print(f"Warning: Source {source_name} not found")
+            continue
+
+        dockerfile_rel = image_config.get('dockerfile', 'Dockerfile')
+        dockerfile_path = source_dir / dockerfile_rel
+
+        if not dockerfile_path.exists():
+            print(f"Warning: Dockerfile not found: {dockerfile_path}")
+            continue
 
         commit_sha = get_commit_sha(source_dir)
+        branch = next((s.get('branch', 'main') for s in config.get('sources', []) if s['name'] == source_name), 'main')
 
-        # 查找 Dockerfile
-        dockerfiles = find_dockerfiles(source_dir, repo_dockerfile)
+        # 解析元数据
+        metadata = parse_dockerfile_metadata(dockerfile_path)
 
-        if not dockerfiles:
-            print(f"Warning: No Dockerfile found in {source_dir}")
-            return
+        # 确定镜像名
+        image_name = image_config['name'] or metadata['name'] or dockerfile_path.parent.name
 
-        for dockerfile in dockerfiles:
-            metadata = parse_dockerfile_metadata(dockerfile)
+        # 确定标签
+        tags = image_config.get('tags', metadata['tags'] or ['latest'])
+        tags = [resolve_template_variables(t, commit_sha, branch) for t in tags]
 
-            if not metadata['name']:
-                metadata['name'] = dockerfile.parent.name
+        # 确定平台
+        platforms = image_config.get('platforms', metadata['platforms'])
 
-            context = str(dockerfile.parent)
+        # 确定构建上下文
+        context = str(dockerfile_path.parent)
 
-            tags = metadata['tags'] if metadata['tags'] else ['latest']
-            tags = [resolve_template_variables(t, commit_sha, 'main') for t in tags]
-
-            # 为每个平台创建独立的构建任务
-            for platform in metadata['platforms']:
-                matrix.append({
-                    'image_name': metadata['name'],
-                    'dockerfile': str(dockerfile),
-                    'context': context,
-                    'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
-                    'first_tag': tags[0] if tags else 'latest',
-                    'platforms': platform,
-                    'runner': get_runner_for_platform(platform),
-                    'build_args': metadata['build_args'],
-                    'source': repo_name
-                })
-
-    # 配置驱动模式
-    else:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-
-        global_platforms = config.get('global', {}).get('platforms', ['linux/amd64', 'linux/arm64'])
-
-        for image_config in config.get('images', []):
-            # 过滤
-            if image_filter and image_config['name'] != image_filter:
-                continue
-            if source_filter and image_config.get('source') != source_filter:
-                continue
-
-            source_name = image_config['source']
-            source_dir = sources_path / source_name
-
-            if not source_dir.exists():
-                print(f"Warning: Source {source_name} not found")
-                continue
-
-            dockerfile_rel = image_config.get('dockerfile', 'Dockerfile')
-            dockerfile_path = source_dir / dockerfile_rel
-
-            if not dockerfile_path.exists():
-                print(f"Warning: Dockerfile not found: {dockerfile_path}")
-                continue
-
-            commit_sha = get_commit_sha(source_dir)
-            branch = config.get('sources', [{}])[0].get('branch', 'main')
-
-            # 解析元数据
-            metadata = parse_dockerfile_metadata(dockerfile_path)
-
-            # 确定镜像名
-            image_name = image_config['name'] or metadata['name'] or dockerfile_path.parent.name
-
-            # 确定标签
-            tags = image_config.get('tags', metadata['tags'] or ['latest'])
-            tags = [resolve_template_variables(t, commit_sha, branch) for t in tags]
-
-            # 确定平台
-            platforms = image_config.get('platforms', global_platforms)
-
-            # 确定构建上下文
-            context = str(dockerfile_path.parent)
-
-            # 为每个平台创建独立的构建任务
-            for platform in platforms:
-                matrix.append({
-                    'image_name': image_name,
-                    'dockerfile': str(dockerfile_path),
-                    'context': context,
-                    'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
-                    'first_tag': tags[0] if tags else 'latest',
-                    'platforms': platform,
-                    'runner': get_runner_for_platform(platform),
-                    'build_args': image_config.get('build_args', {}),
-                    'source': source_name
-                })
+        # 为每个平台创建独立的构建任务
+        for platform in platforms:
+            matrix.append({
+                'image_name': image_name,
+                'dockerfile': str(dockerfile_path),
+                'context': context,
+                'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
+                'first_tag': tags[0] if tags else 'latest',
+                'platforms': platform,
+                'runner': get_runner_for_platform(platform),
+                'build_args': image_config.get('build_args', {}),
+                'source': source_name
+            })
 
     result = {'matrix': matrix}
 
@@ -240,27 +164,19 @@ def generate_matrix(
 
     # 输出矩阵内容供调试
     for item in matrix:
-        print(f"  - {item['image_name']}: {item['tags']}")
+        print(f"  - {item['image_name']}: {item['first_tag']}")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scan Dockerfiles and generate build matrix')
-    parser.add_argument('--config', help='Path to images.yaml')
+    parser.add_argument('--config', required=True, help='Path to config file')
     parser.add_argument('--sources', required=True, help='Directory containing cloned sources')
     parser.add_argument('--output', required=True, help='Output JSON file path')
-    parser.add_argument('--repo-url', help='Temporary repository URL')
-    parser.add_argument('--repo-dockerfile', help='Dockerfile path in temporary repo')
-    parser.add_argument('--image', help='Filter by image name')
-    parser.add_argument('--source', help='Filter by source name')
 
     args = parser.parse_args()
 
     generate_matrix(
         config_path=args.config,
         sources_dir=args.sources,
-        output_path=args.output,
-        repo_url=args.repo_url,
-        repo_dockerfile=args.repo_dockerfile,
-        image_filter=args.image,
-        source_filter=args.source
+        output_path=args.output
     )
