@@ -8,12 +8,8 @@ on:
   # 手动触发
   workflow_dispatch:
     inputs:
-      source:
-        description: '源仓库名称 (留空构建所有)'
-        required: false
-        default: ''
-      image:
-        description: '镜像名称 (留空构建所有)'
+      config:
+        description: '配置文件名称 (如 pytorch-images.yml，留空构建所有)'
         required: false
         default: ''
       repo_url:
@@ -45,7 +41,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'config/images.yaml'
+      - 'config/*-images.yml'
 
 env:
   REGISTRY: quay.io
@@ -56,11 +52,13 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.generate.outputs.matrix }}
+      configs: ${{ steps.detect.outputs.configs }}
       is_temp_mode: ${{ steps.check.outputs.is_temp_mode }}
     steps:
       - name: Checkout image-factory
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # 需要获取历史来检测变更
 
       - name: Check build mode
         id: check
@@ -73,17 +71,66 @@ jobs:
             echo "Build mode: Config-driven"
           fi
 
-      - name: Validate config
-        if: steps.check.outputs.is_temp_mode != 'true'
+      - name: Detect configs to build
+        id: detect
         run: |
           pip install pyyaml
-          python3 scripts/validate-config.py config/images.yaml
+
+          if [ -n "${{ github.event.inputs.repo_url }}" ]; then
+            # 临时仓库模式
+            configs='[]'
+          elif [ -n "${{ github.event.inputs.config }}" ]; then
+            # 手动触发，指定配置文件
+            config_file="config/${{ github.event.inputs.config }}"
+            if [ -f "$config_file" ]; then
+              configs='["'"$config_file"'"]'
+              echo "Using specified config: $config_file"
+            else
+              echo "Error: Config file not found: $config_file"
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # Push 触发，检测变更的配置文件
+            changed=$(git diff --name-only HEAD~1 HEAD | grep 'config/.*-images.yml' || true)
+            if [ -z "$changed" ]; then
+              configs='[]'
+              echo "No config changes detected"
+            else
+              configs=$(echo "$changed" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+              echo "Changed configs: $configs"
+            fi
+          else
+            # 定时触发，构建所有配置
+            configs=$(ls config/*-images.yml 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+            echo "Building all configs: $configs"
+          fi
+          echo "configs=${configs}" >> $GITHUB_OUTPUT
+
+      - name: Validate configs
+        if: steps.detect.outputs.configs != '[]'
+        run: |
+          configs='${{ steps.detect.outputs.configs }}'
+          for config in $(echo "$configs" | jq -r '.[]'); do
+            echo "Validating $config..."
+            python3 scripts/validate-config.py "$config"
+          done
+
+  # ==================== 克隆源仓库 ====================
+  clone:
+    needs: prepare
+    if: needs.prepare.outputs.configs != '[]' || needs.prepare.outputs.is_temp_mode == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+    steps:
+      - name: Checkout image-factory
+        uses: actions/checkout@v4
 
       - name: Clone source repositories
         run: |
           mkdir -p sources
 
-          if [ -n "${{ github.event.inputs.repo_url }}" ]; then
+          if [ "${{ needs.prepare.outputs.is_temp_mode }}" = "true" ]; then
             # 临时仓库模式
             python3 scripts/clone-sources.py \
               --output sources/ \
@@ -91,27 +138,33 @@ jobs:
               --repo-branch "${{ github.event.inputs.repo_branch }}"
           else
             # 配置驱动模式
-            python3 scripts/clone-sources.py \
-              --config config/images.yaml \
-              --output sources/
+            configs='${{ needs.prepare.outputs.configs }}'
+            for config in $(echo "$configs" | jq -r '.[]'); do
+              echo "Cloning sources from $config..."
+              python3 scripts/clone-sources.py \
+                --config "$config" \
+                --output sources/
+            done
           fi
 
       - name: Scan Dockerfiles and generate matrix
-        id: generate
+        id: scan
         run: |
-          if [ -n "${{ github.event.inputs.repo_url }}" ]; then
+          if [ "${{ needs.prepare.outputs.is_temp_mode }}" = "true" ]; then
+            # 临时仓库模式
             python3 scripts/scan-dockerfiles.py \
               --sources sources/ \
               --output matrix.json \
               --repo-url "${{ github.event.inputs.repo_url }}" \
               --repo-dockerfile "${{ github.event.inputs.repo_dockerfile }}"
           else
+            # 配置驱动模式
+            configs='${{ needs.prepare.outputs.configs }}'
+            first_config=$(echo "$configs" | jq -r '.[0]')
             python3 scripts/scan-dockerfiles.py \
-              --config config/images.yaml \
+              --config "$first_config" \
               --sources sources/ \
-              --output matrix.json \
-              --image "${{ github.event.inputs.image }}" \
-              --source "${{ github.event.inputs.source }}"
+              --output matrix.json
           fi
 
           matrix=$(cat matrix.json | jq -c '.matrix')
@@ -126,12 +179,12 @@ jobs:
 
   # ==================== 构建阶段 ====================
   build:
-    needs: prepare
-    if: needs.prepare.outputs.matrix != '[]'
+    needs: clone
+    if: needs.clone.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+        include: ${{ fromJson(needs.clone.outputs.matrix) }}
       fail-fast: false
     steps:
       - name: Download sources

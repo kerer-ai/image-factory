@@ -1,9 +1,10 @@
 # 镜像工厂 (Image Factory)
 
-通用化的容器镜像自动化构建系统，支持多仓库、多架构、安全扫描和 SBOM 生成。
+通用化的容器镜像自动化构建系统，支持多配置文件、多架构、安全扫描和 SBOM 生成。
 
 ## 功能特性
 
+- **多配置文件**：每个项目独立配置文件，互不影响
 - **源码分离**：Dockerfile 存放在外部仓库，通过配置文件声明
 - **多架构支持**：同时支持 x86_64 和 arm64 架构，使用原生 Runner 加速构建
 - **安全扫描**：Trivy 漏洞扫描 + SBOM 生成（漏洞不影响镜像推送）
@@ -20,6 +21,78 @@
 
 > 使用 GitHub 原生 ARM Runner 替代 QEMU 模拟，ARM 构建速度提升 20 倍以上。
 
+## 配置文件
+
+配置文件位于 `config/` 目录，命名为 `*-images.yml`：
+
+```
+config/
+├── pytorch-images.yml      # PyTorch 项目配置
+├── tensorflow-images.yml   # TensorFlow 项目配置
+└── ...
+```
+
+每个配置文件独立完整：
+
+```yaml
+# config/pytorch-images.yml
+sources:
+  - name: pytorch
+    url: https://github.com/org/pytorch.git
+    branch: main
+
+images:
+  - name: pytorch
+    source: pytorch
+    dockerfile: Dockerfile
+    tags:
+      - x86-latest
+      - x86-1.0
+    platforms:
+      - linux/amd64
+
+  - name: pytorch
+    source: pytorch
+    dockerfile: Dockerfile.arm
+    tags:
+      - arm-latest
+    platforms:
+      - linux/arm64
+```
+
+### 配置项说明
+
+| 配置项 | 类型 | 必需 | 说明 |
+|--------|------|------|------|
+| `sources[].name` | string | 是 | 源仓库名称（唯一标识） |
+| `sources[].url` | string | 是 | 仓库地址 |
+| `sources[].branch` | string | 否 | 分支名，默认 main |
+| `images[].name` | string | 是 | 镜像名称 |
+| `images[].source` | string | 是 | 引用的源仓库名称 |
+| `images[].dockerfile` | string | 否 | Dockerfile 路径，默认 Dockerfile |
+| `images[].tags` | list | 否 | 镜像标签列表 |
+| `images[].platforms` | list | 否 | 目标平台 |
+
+## 触发方式
+
+| 触发类型 | 说明 |
+|----------|------|
+| 定时触发 | 每日 UTC 2:00（北京时间 10:00）构建所有配置 |
+| 配置变更 | `config/*-images.yml` 变更时自动触发对应项目构建 |
+| 手动触发 | 通过 GitHub Actions 界面手动执行 |
+
+### 手动触发参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `config` | string | 空 | 配置文件名称（如 pytorch-images.yml，留空构建所有） |
+| `repo_url` | string | 空 | 临时仓库地址 |
+| `repo_branch` | string | main | 临时仓库分支 |
+| `repo_dockerfile` | string | Dockerfile | Dockerfile 路径 |
+| `push` | boolean | true | 是否推送到仓库 |
+| `skip_scan` | boolean | false | 跳过安全扫描 |
+| `skip_sbom` | boolean | false | 跳过 SBOM 生成 |
+
 ## 快速开始
 
 ### 1. 配置 GitHub Secrets
@@ -28,7 +101,6 @@
 |------------|------|
 | `QUAY_USERNAME` | quay.io 用户名（格式：`org+robot_name`） |
 | `QUAY_ROBOT_TOKEN` | quay.io Robot Token |
-| `SSH_DEPLOY_KEY_*` | 私有仓库 Deploy Key（可选） |
 
 ### 2. 配置 GitHub Variables
 
@@ -36,57 +108,28 @@
 |--------|------|
 | `QUAY_ORG` | quay.io 组织名 |
 
-### 3. 编辑配置文件
+### 3. 创建配置文件
 
-编辑 `config/images.yaml`，添加源仓库和镜像配置：
+在 `config/` 目录创建项目配置文件：
 
-```yaml
-# 全局配置
-global:
-  registry: quay.io
-  organization: ${QUAY_ORG}
-  platforms:
-    - linux/amd64
-    - linux/arm64
+```bash
+# 复制示例配置
+cp config/pytorch-images.yml config/myproject-images.yml
 
-# 源仓库列表
-sources:
-  - name: my-images
-    url: https://github.com/myorg/images.git
-    branch: main
-
-# 镜像构建配置
-images:
-  - name: myapp
-    source: my-images
-    dockerfile: myapp/Dockerfile
-    tags:
-      - x86-latest
-      - x86-1.0
-    platforms:
-      - linux/amd64
-
-  - name: myapp
-    source: my-images
-    dockerfile: myapp/Dockerfile.arm
-    tags:
-      - arm-latest
-      - arm-1.0
-    platforms:
-      - linux/arm64
+# 编辑配置
+vim config/myproject-images.yml
 ```
 
 ### 4. 触发构建
 
-- **自动**：每日 UTC 2:00（北京时间 10:00）
-- **手动**：GitHub Actions -> Run workflow
-- **配置变更**：修改 `config/images.yaml` 自动触发
+- **自动**：推送配置文件变更自动触发
+- **手动**：GitHub Actions -> Run workflow -> 选择配置文件
 
 ## 使用方式
 
 ### 配置驱动模式
 
-在 `config/images.yaml` 中定义源仓库和镜像。
+创建 `config/xxx-images.yml` 配置文件，定义源仓库和镜像。
 
 ### 临时仓库模式
 
@@ -95,7 +138,7 @@ images:
 ```
 repo_url: https://github.com/user/test-images.git
 repo_branch: main
-repo_dockerfile: python/Dockerfile
+repo_dockerfile: Dockerfile
 push: false
 ```
 
@@ -115,11 +158,14 @@ image-factory/
 ├── .github/workflows/
 │   └── build-images.yml    # GitHub Actions 工作流
 ├── config/
-│   └── images.yaml         # 镜像配置文件
+│   ├── pytorch-images.yml  # PyTorch 镜像配置
+│   └── *-images.yml        # 其他项目配置
 ├── scripts/
 │   ├── clone-sources.py    # 源仓库克隆脚本
 │   ├── scan-dockerfiles.py # Dockerfile 扫描脚本
-│   └── validate-config.py  # 配置校验脚本
+│   ├── validate-config.py  # 配置校验脚本
+│   ├── list-configs.py     # 列出所有配置文件
+│   └── detect-changed-configs.py  # 检测变更配置
 └── README.md
 ```
 
@@ -127,10 +173,13 @@ image-factory/
 
 ```bash
 # 验证配置文件
-python3 scripts/validate-config.py config/images.yaml
+python3 scripts/validate-config.py config/pytorch-images.yml
 
-# 手动触发构建
-gh workflow run build-images.yml -f image=myapp -f push=false
+# 列出所有配置
+python3 scripts/list-configs.py
+
+# 手动触发指定配置
+gh workflow run build-images.yml -f config=pytorch-images.yml
 
 # 临时仓库构建
 gh workflow run build-images.yml \
@@ -147,19 +196,6 @@ gh workflow run build-images.yml \
 | Trivy 扫描报告 | `trivy-report-<tag>.txt` | 漏洞扫描结果 |
 | SBOM (SPDX) | `sbom-<tag>.spdx.json` | SPDX 格式物料清单 |
 | SBOM (CycloneDX) | `sbom-<tag>.cdx.json` | CycloneDX 格式物料清单 |
-
-## 手动触发参数
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `source` | string | 空 | 指定源仓库名称 |
-| `image` | string | 空 | 指定镜像名称 |
-| `repo_url` | string | 空 | 临时仓库地址 |
-| `repo_branch` | string | main | 临时仓库分支 |
-| `repo_dockerfile` | string | Dockerfile | Dockerfile 路径 |
-| `push` | boolean | true | 是否推送到仓库 |
-| `skip_scan` | boolean | false | 跳过安全扫描 |
-| `skip_sbom` | boolean | false | 跳过 SBOM 生成 |
 
 ## License
 

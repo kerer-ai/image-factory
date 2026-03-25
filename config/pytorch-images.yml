@@ -1,17 +1,7 @@
-# 镜像工厂配置文件
-# 定义 Dockerfile 来源仓库和构建参数
-
-# 全局配置
-global:
-  registry: quay.io
-  organization: ${QUAY_ORG}           # 从 GitHub Variables 读取
-  platforms:
-    - linux/amd64
-    - linux/arm64
+# PyTorch 镜像构建配置
 
 # 源仓库列表
 sources:
-  # PyTorch 镜像源仓库
   - name: pytorch
     url: https://gitcode.com/kerer-sk/pytorch.git
     branch: master
@@ -49,4 +39,3 @@ sbom:
   formats:
     - spdx
     - cyclonedx
-  retention_days: 30

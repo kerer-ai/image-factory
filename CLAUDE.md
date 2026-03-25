@@ -4,17 +4,23 @@
 
 ## 项目概述
 
-镜像工厂是一个容器镜像自动化构建系统，从外部仓库构建 Docker 镜像并推送到 quay.io。支持多架构构建（amd64/arm64），使用 GitHub 原生 Runner 加速。
+镜像工厂是一个容器镜像自动化构建系统，从外部仓库构建 Docker 镜像并推送到 quay.io。支持多配置文件、多架构构建（amd64/arm64），使用 GitHub 原生 Runner 加速。
 
 ## 架构
 
 ```
-config/images.yaml → GitHub Actions → 构建矩阵 → 多架构镜像 → quay.io
+config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → quay.io
 ```
 
-**两种构建模式：**
-- **配置驱动**：源仓库定义在 `config/images.yaml`，定时或配置变更时触发
-- **临时仓库**：手动触发时传入 `repo_url` 参数，一次性构建
+**配置文件结构：**
+- 配置文件存放在 `config/` 目录
+- 命名格式：`*-images.yml`（如 `pytorch-images.yml`）
+- 每个配置文件独立完整，包含 sources 和 images 定义
+
+**触发机制：**
+- 定时触发：每日 UTC 2:00 构建所有配置
+- 配置变更：`config/*-images.yml` 变更时触发对应项目构建
+- 手动触发：可选择指定配置文件或构建所有
 
 **多架构策略：**
 - `linux/amd64` 运行在 `ubuntu-latest`
@@ -28,29 +34,27 @@ config/images.yaml → GitHub Actions → 构建矩阵 → 多架构镜像 → q
 |------|------|
 | `scripts/clone-sources.py` | 从配置或临时 URL 克隆源仓库 |
 | `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 并生成构建矩阵 JSON |
-| `scripts/validate-config.py` | 校验 `config/images.yaml` 配置格式 |
+| `scripts/validate-config.py` | 校验配置文件格式 |
+| `scripts/list-configs.py` | 列出所有可用配置文件 |
+| `scripts/detect-changed-configs.py` | 检测变更的配置文件 |
 
-## 配置文件
+## 配置文件格式
 
-`config/images.yaml` 是唯一的配置源。结构：
+每个配置文件独立完整：
 
 ```yaml
-global:
-  registry: quay.io
-  organization: ${QUAY_ORG}
-  platforms: [linux/amd64, linux/arm64]
-
+# config/pytorch-images.yml
 sources:
-  - name: 仓库名
-    url: https://github.com/org/repo.git
+  - name: pytorch
+    url: https://github.com/org/pytorch.git
     branch: main
 
 images:
-  - name: 镜像名
-    source: 仓库名
-    dockerfile: path/to/Dockerfile
-    tags: [tag1, tag2]
-    platforms: [linux/amd64]  # 可选覆盖
+  - name: pytorch
+    source: pytorch
+    dockerfile: Dockerfile
+    tags: [latest, v1.0]
+    platforms: [linux/amd64]
 ```
 
 ## 构建矩阵生成
@@ -82,13 +86,16 @@ images:
 
 ```bash
 # 校验配置
-python3 scripts/validate-config.py config/images.yaml
+python3 scripts/validate-config.py config/pytorch-images.yml
 
-# 手动触发构建
+# 列出所有配置
+python3 scripts/list-configs.py
+
+# 手动触发指定配置
+gh workflow run build-images.yml -f config=pytorch-images.yml -f push=true
+
+# 构建所有配置
 gh workflow run build-images.yml -f push=true
-
-# 构建指定镜像
-gh workflow run build-images.yml -f image=myapp -f push=false
 
 # 临时仓库构建
 gh workflow run build-images.yml \
@@ -117,7 +124,6 @@ gh run list --workflow=build-images.yml --limit 5
 
 - `QUAY_USERNAME`：quay.io 用户名（格式：`org+robot_name`）
 - `QUAY_ROBOT_TOKEN`：quay.io Robot Token
-- `SSH_DEPLOY_KEY_*`：私有仓库 Deploy Key（可选）
 
 ## 必需的 GitHub Variables
 
