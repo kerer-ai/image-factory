@@ -162,13 +162,48 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
 
+      - name: Generate timestamp and tags
+        id: tags
+        run: |
+          # 生成时间戳 yyyymmddHHMMSS
+          TIMESTAMP=$(date -u '+%Y%m%d%H%M%S')
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+          # 解析原始 tags 并添加时间戳后缀
+          ORIGINAL_TAGS='${{ matrix.tags }}'
+          TAGS_WITH_TIMESTAMP=""
+
+          while IFS= read -r tag_line; do
+            if [ -n "$tag_line" ]; then
+              # 提取 tag 值
+              tag_value=$(echo "$tag_line" | sed 's/type=raw,value=//')
+
+              # 添加时间戳后缀
+              new_tag="${tag_value}-${TIMESTAMP}"
+
+              if [ -z "$TAGS_WITH_TIMESTAMP" ]; then
+                TAGS_WITH_TIMESTAMP="type=raw,value=${new_tag}"
+              else
+                TAGS_WITH_TIMESTAMP="${TAGS_WITH_TIMESTAMP}"$'\n'"type=raw,value=${new_tag}"
+              fi
+            fi
+          done <<< "$ORIGINAL_TAGS"
+
+          echo "tags_with_timestamp<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAGS_WITH_TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # 输出第一个带时间戳的标签用于后续扫描
+          FIRST_TAG=$(echo "$TAGS_WITH_TIMESTAMP" | head -1 | sed 's/type=raw,value=//')
+          echo "first_tag_with_timestamp=${FIRST_TAG}" >> $GITHUB_OUTPUT
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}
           tags: |
-            ${{ matrix.tags }}
+            ${{ steps.tags.outputs.tags_with_timestamp }}
 
       - name: Set cache config
         id: cache
@@ -205,60 +240,60 @@ jobs:
       - name: Pull image for scanning
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         run: |
-          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}-local \
-            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
-          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}-local \
+            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
 
       - name: Run Trivy vulnerability scanner
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-report-${{ matrix.first_tag }}.txt'
+          output: 'trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}.txt'
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report-${{ matrix.first_tag }}
-          path: trivy-report-${{ matrix.first_tag }}.txt
+          name: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}
+          path: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}.txt
           retention-days: 30
 
       - name: Generate SBOM (SPDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'spdx-json'
-          output: 'sbom-${{ matrix.first_tag }}.spdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.spdx.json'
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'cyclonedx'
-          output: 'sbom-${{ matrix.first_tag }}.cdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.cdx.json'
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ matrix.first_tag }}
+          name: sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}
           path: |
-            sbom-${{ matrix.first_tag }}.spdx.json
-            sbom-${{ matrix.first_tag }}.cdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.spdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.cdx.json
           retention-days: 30
 
       - name: Remove local tag
         if: always() && github.event.inputs.push != 'false'
         run: |
-          docker buildx imagetools rm ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}-local || true
+          docker buildx imagetools rm ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}-local || true
 
       - name: Output build info
         id: build_info
@@ -272,7 +307,7 @@ jobs:
           fi
           echo "image_name=${{ matrix.image_name }}" >> $GITHUB_OUTPUT
           echo "platform=${{ matrix.platforms }}" >> $GITHUB_OUTPUT
-          echo "first_tag=${{ matrix.first_tag }}" >> $GITHUB_OUTPUT
+          echo "first_tag=${{ steps.tags.outputs.first_tag_with_timestamp }}" >> $GITHUB_OUTPUT
 
           # 创建构建信息文件供 summary 使用
           mkdir -p build-info
@@ -281,7 +316,7 @@ jobs:
             "status": "${{ job.status }}",
             "image_name": "${{ matrix.image_name }}",
             "platform": "${{ matrix.platforms }}",
-            "first_tag": "${{ matrix.first_tag }}",
+            "first_tag": "${{ steps.tags.outputs.first_tag_with_timestamp }}",
             "registry": "${{ env.REGISTRY }}",
             "org": "${{ env.ORG }}"
           }
@@ -291,7 +326,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-info-${{ matrix.first_tag }}
+          name: build-info-${{ steps.tags.outputs.first_tag_with_timestamp }}
           path: build-info/info.json
           retention-days: 1
 
