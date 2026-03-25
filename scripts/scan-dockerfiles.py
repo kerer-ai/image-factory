@@ -139,7 +139,13 @@ def generate_matrix(
         platforms = image_config.get('platforms', metadata['platforms'])
 
         # 确定构建上下文
-        context = str(dockerfile_path.parent)
+        # 支持配置 context，默认使用仓库根目录
+        context_config = image_config.get('context', '')
+        if context_config:
+            context = str(source_dir / context_config)
+        else:
+            # 默认使用仓库根目录作为上下文
+            context = str(source_dir)
 
         # 为每个平台创建独立的构建任务
         for platform in platforms:

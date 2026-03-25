@@ -97,6 +97,7 @@ sources:
 | `name` | string | ✅ | - | 镜像名称 |
 | `source` | string | ✅ | - | 引用的 sources 中的 name |
 | `dockerfile` | string | ❌ | `Dockerfile` | Dockerfile 相对于仓库根目录的路径 |
+| `context` | string | ❌ | 仓库根目录 | Docker 构建上下文路径 |
 | `tags` | list | ❌ | `['latest']` | 镜像标签列表 |
 | `platforms` | list | ❌ | `['linux/amd64']` | 目标构建平台 |
 | `build_args` | map | ❌ | `{}` | 构建参数 |
