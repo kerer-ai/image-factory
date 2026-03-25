@@ -189,6 +189,7 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
           output: 'trivy-report-${{ matrix.first_tag }}.txt'
+          platform: ${{ matrix.platforms }}
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
@@ -205,6 +206,7 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'spdx-json'
           output: 'sbom-${{ matrix.first_tag }}.spdx.json'
+          platform: ${{ matrix.platforms }}
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
@@ -213,6 +215,7 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'cyclonedx'
           output: 'sbom-${{ matrix.first_tag }}.cdx.json'
+          platform: ${{ matrix.platforms }}
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
