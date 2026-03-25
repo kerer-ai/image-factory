@@ -178,6 +178,13 @@ jobs:
             type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
             type=gha,mode=max
 
+      - name: Pull image for scanning
+        if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
+        run: |
+          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}-local \
+            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
+
       - name: Run Trivy vulnerability scanner
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
@@ -189,7 +196,6 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
           output: 'trivy-report-${{ matrix.first_tag }}.txt'
-          platform: ${{ matrix.platforms }}
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
@@ -206,7 +212,6 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'spdx-json'
           output: 'sbom-${{ matrix.first_tag }}.spdx.json'
-          platform: ${{ matrix.platforms }}
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
@@ -215,7 +220,6 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'cyclonedx'
           output: 'sbom-${{ matrix.first_tag }}.cdx.json'
-          platform: ${{ matrix.platforms }}
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
