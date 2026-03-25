@@ -1,38 +1,38 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code (claude.ai/code) 提供代码仓库的开发指南。
 
-## Project Overview
+## 项目概述
 
-Image Factory is a container image automation build system that builds Docker images from external repositories and pushes them to quay.io. It supports multi-architecture builds (amd64/arm64) using native GitHub runners.
+镜像工厂是一个容器镜像自动化构建系统，从外部仓库构建 Docker 镜像并推送到 quay.io。支持多架构构建（amd64/arm64），使用 GitHub 原生 Runner 加速。
 
-## Architecture
+## 架构
 
 ```
-config/images.yaml → GitHub Actions → Build Matrix → Multi-arch Images → quay.io
+config/images.yaml → GitHub Actions → 构建矩阵 → 多架构镜像 → quay.io
 ```
 
-**Two build modes:**
-- **Config-driven**: Sources defined in `config/images.yaml`, triggered by schedule/config change
-- **Temporary repo**: Manual trigger with `repo_url` parameter for one-time builds
+**两种构建模式：**
+- **配置驱动**：源仓库定义在 `config/images.yaml`，定时或配置变更时触发
+- **临时仓库**：手动触发时传入 `repo_url` 参数，一次性构建
 
-**Multi-arch strategy:**
-- `linux/amd64` runs on `ubuntu-latest`
-- `linux/arm64` runs on `ubuntu-22.04-arm` (native ARM, not QEMU emulation)
+**多架构策略：**
+- `linux/amd64` 运行在 `ubuntu-latest`
+- `linux/arm64` 运行在 `ubuntu-22.04-arm`（原生 ARM，非 QEMU 模拟）
 
-Each platform gets a separate matrix job with its own runner, enabling parallel builds.
+每个平台生成独立的矩阵任务，使用各自的 Runner，实现并行构建。
 
-## Key Scripts
+## 关键脚本
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/clone-sources.py` | Clones source repos from config or temp URL |
-| `scripts/scan-dockerfiles.py` | Scans Dockerfiles and generates build matrix JSON |
-| `scripts/validate-config.py` | Validates `config/images.yaml` schema |
+| 脚本 | 用途 |
+|------|------|
+| `scripts/clone-sources.py` | 从配置或临时 URL 克隆源仓库 |
+| `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 并生成构建矩阵 JSON |
+| `scripts/validate-config.py` | 校验 `config/images.yaml` 配置格式 |
 
-## Configuration File
+## 配置文件
 
-`config/images.yaml` is the single source of truth. Structure:
+`config/images.yaml` 是唯一的配置源。结构：
 
 ```yaml
 global:
@@ -41,21 +41,21 @@ global:
   platforms: [linux/amd64, linux/arm64]
 
 sources:
-  - name: repo-name
+  - name: 仓库名
     url: https://github.com/org/repo.git
     branch: main
 
 images:
-  - name: image-name
-    source: repo-name
+  - name: 镜像名
+    source: 仓库名
     dockerfile: path/to/Dockerfile
     tags: [tag1, tag2]
-    platforms: [linux/amd64]  # optional override
+    platforms: [linux/amd64]  # 可选覆盖
 ```
 
-## Build Matrix Generation
+## 构建矩阵生成
 
-`scan-dockerfiles.py` generates a matrix where **each platform becomes a separate job**:
+`scan-dockerfiles.py` 生成矩阵时，**每个平台独立成一个 job**：
 
 ```json
 {
@@ -78,47 +78,47 @@ images:
 }
 ```
 
-## Common Commands
+## 常用命令
 
 ```bash
-# Validate config
+# 校验配置
 python3 scripts/validate-config.py config/images.yaml
 
-# Trigger manual build
+# 手动触发构建
 gh workflow run build-images.yml -f push=true
 
-# Build specific image
+# 构建指定镜像
 gh workflow run build-images.yml -f image=myapp -f push=false
 
-# Temporary repo build
+# 临时仓库构建
 gh workflow run build-images.yml \
   -f repo_url=https://github.com/user/repo.git \
   -f repo_dockerfile=Dockerfile \
   -f push=false
 
-# Check build status
+# 查看构建状态
 gh run list --workflow=build-images.yml --limit 5
 ```
 
-## Build Caching
+## 构建缓存
 
-Uses dual caching:
-1. **Registry cache**: `buildcache-amd64` / `buildcache-arm64` tags
-2. **GitHub Actions cache**: For layer reuse
+使用双重缓存：
+1. **Registry 缓存**：`buildcache-amd64` / `buildcache-arm64` 标签
+2. **GitHub Actions 缓存**：用于层复用
 
-## Build Artifacts
+## 构建产物
 
-Artifacts are named by the first tag (not image name) to avoid collisions:
+产物使用第一个标签命名（非镜像名），避免冲突：
 - `trivy-report-<tag>.txt`
 - `sbom-<tag>.spdx.json`
 - `sbom-<tag>.cdx.json`
 
-## GitHub Secrets Required
+## 必需的 GitHub Secrets
 
-- `QUAY_USERNAME`: quay.io username (format: `org+robot_name`)
-- `QUAY_ROBOT_TOKEN`: quay.io Robot Token
-- `SSH_DEPLOY_KEY_*`: For private repos (optional)
+- `QUAY_USERNAME`：quay.io 用户名（格式：`org+robot_name`）
+- `QUAY_ROBOT_TOKEN`：quay.io Robot Token
+- `SSH_DEPLOY_KEY_*`：私有仓库 Deploy Key（可选）
 
-## GitHub Variables Required
+## 必需的 GitHub Variables
 
-- `QUAY_ORG`: quay.io organization name
+- `QUAY_ORG`：quay.io 组织名
