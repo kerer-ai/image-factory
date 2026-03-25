@@ -70,9 +70,18 @@ Claude 会自动执行以下步骤：
 
 ### 方式二：手动添加
 
-1. 在 `config/` 目录创建配置文件
-2. 本地校验：`python3 scripts/validate-config.py config/<project>-images.yml`
-3. 提交配置文件，自动触发构建
+1. 安装 [uv](https://docs.astral.sh/uv/)（Python 包管理器）
+2. 创建虚拟环境并安装依赖：
+   ```bash
+   uv venv
+   uv pip install pyyaml
+   ```
+3. 在 `config/` 目录创建配置文件
+4. 本地校验：
+   ```bash
+   uv run python scripts/validate-config.py config/<project>-images.yml
+   ```
+5. 提交配置文件，自动触发构建
 
 详细步骤请参考 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
