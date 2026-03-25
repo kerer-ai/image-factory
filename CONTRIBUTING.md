@@ -18,22 +18,35 @@
 
 | 工具 | 版本要求 | 说明 |
 |------|----------|------|
-| Python | 3.8+ | 运行校验脚本 |
+| uv | 最新版 | Python 包管理器（推荐） |
 | Git | 2.0+ | 版本控制 |
-| PyYAML | 最新版 | Python YAML 解析库 |
 
-### 安装依赖
+### 安装 uv
 
+uv 是一个快速的 Python 包管理器，用于管理虚拟环境和依赖。
+
+**macOS / Linux:**
 ```bash
-# 安装 PyYAML
-pip install pyyaml
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 克隆仓库
+**Windows:**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**其他安装方式:** 参见 [uv 官方文档](https://docs.astral.sh/uv/getting-started/installation/)
+
+### 创建虚拟环境
 
 ```bash
+# 克隆仓库
 git clone https://github.com/kerer-ai/image-factory.git
 cd image-factory
+
+# 创建虚拟环境并安装依赖
+uv venv
+uv pip install pyyaml
 ```
 
 ---
@@ -73,10 +86,25 @@ images:
 
 ### 步骤 3: 本地校验
 
-在提交前，使用 `validate-config.py` 脚本校验配置文件格式：
+在提交前，使用 `validate-config.py` 脚本校验配置文件格式。
+
+**激活虚拟环境并运行校验：**
 
 ```bash
-python3 scripts/validate-config.py config/tensorflow-images.yml
+# 激活虚拟环境
+# macOS / Linux:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
+# 运行校验
+python scripts/validate-config.py config/tensorflow-images.yml
+```
+
+**或者使用 uv run 直接运行（无需激活环境）：**
+
+```bash
+uv run python scripts/validate-config.py config/tensorflow-images.yml
 ```
 
 **成功输出示例**：
@@ -114,11 +142,17 @@ git push origin main
 ### 使用方式
 
 ```bash
-# 校验单个配置文件
-python3 scripts/validate-config.py config/<project>-images.yml
+# 方式一：激活虚拟环境后运行
+source .venv/bin/activate  # macOS / Linux
+# .venv\Scripts\activate   # Windows
+
+python scripts/validate-config.py config/<project>-images.yml
+
+# 方式二：使用 uv run 直接运行（无需激活）
+uv run python scripts/validate-config.py config/<project>-images.yml
 
 # 示例
-python3 scripts/validate-config.py config/pytorch-images.yml
+uv run python scripts/validate-config.py config/pytorch-images.yml
 ```
 
 ### 校验内容
@@ -148,7 +182,7 @@ python3 scripts/validate-config.py config/pytorch-images.yml
 # 校验所有配置文件
 for config in config/*-images.yml; do
   echo "Validating $config..."
-  python3 scripts/validate-config.py "$config" || exit 1
+  uv run python scripts/validate-config.py "$config" || exit 1
 done
 ```
 
