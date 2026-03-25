@@ -22,6 +22,7 @@ image-factory/
 ├── docs/
 │   ├── ARCHITECTURE.md       # 架构设计文档
 │   ├── CONFIGURATION.md      # 配置说明文档
+│   ├── LESSONS-LEARNED.md    # 错误案例记录
 │   └── PRD.md                # 产品需求文档
 ├── scripts/
 │   ├── clone-sources.py      # 克隆源仓库
@@ -44,6 +45,7 @@ image-factory/
 | `scripts/validate-config.py` | 本地校验配置文件格式 |
 | `docs/ARCHITECTURE.md` | 系统架构和执行流程 |
 | `docs/CONFIGURATION.md` | 配置项详细说明 |
+| `docs/LESSONS-LEARNED.md` | 错误案例记录和经验教训 |
 
 ## 快速开始
 
@@ -92,6 +94,7 @@ Claude 会自动执行以下步骤：
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 配置说明文档 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计文档 |
+| [docs/LESSONS-LEARNED.md](docs/LESSONS-LEARNED.md) | 错误案例记录 |
 
 ## License
 

@@ -127,4 +127,5 @@ gh run list --workflow=build-images.yml --limit 5
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 配置说明文档 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计文档 |
+| [docs/LESSONS-LEARNED.md](docs/LESSONS-LEARNED.md) | 错误案例记录 |
 | [docs/PRD.md](docs/PRD.md) | 产品需求文档 |
