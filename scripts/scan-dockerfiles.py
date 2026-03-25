@@ -12,6 +12,15 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 
+def get_runner_for_platform(platform: str) -> str:
+    """根据平台选择合适的 runner"""
+    platform_runners = {
+        'linux/amd64': 'ubuntu-latest',
+        'linux/arm64': 'ubuntu-22.04-arm',
+    }
+    return platform_runners.get(platform, 'ubuntu-latest')
+
+
 def parse_dockerfile_metadata(dockerfile_path: Path) -> Dict[str, Any]:
     """从 Dockerfile 注释中提取元数据"""
 
@@ -147,16 +156,19 @@ def generate_matrix(
             tags = metadata['tags'] if metadata['tags'] else ['latest']
             tags = [resolve_template_variables(t, commit_sha, 'main') for t in tags]
 
-            matrix.append({
-                'image_name': metadata['name'],
-                'dockerfile': str(dockerfile),
-                'context': context,
-                'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
-                'first_tag': tags[0] if tags else 'latest',
-                'platforms': ','.join(metadata['platforms']),
-                'build_args': metadata['build_args'],
-                'source': repo_name
-            })
+            # 为每个平台创建独立的构建任务
+            for platform in metadata['platforms']:
+                matrix.append({
+                    'image_name': metadata['name'],
+                    'dockerfile': str(dockerfile),
+                    'context': context,
+                    'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
+                    'first_tag': tags[0] if tags else 'latest',
+                    'platforms': platform,
+                    'runner': get_runner_for_platform(platform),
+                    'build_args': metadata['build_args'],
+                    'source': repo_name
+                })
 
     # 配置驱动模式
     else:
@@ -205,16 +217,19 @@ def generate_matrix(
             # 确定构建上下文
             context = str(dockerfile_path.parent)
 
-            matrix.append({
-                'image_name': image_name,
-                'dockerfile': str(dockerfile_path),
-                'context': context,
-                'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
-                'first_tag': tags[0] if tags else 'latest',
-                'platforms': ','.join(platforms),
-                'build_args': image_config.get('build_args', {}),
-                'source': source_name
-            })
+            # 为每个平台创建独立的构建任务
+            for platform in platforms:
+                matrix.append({
+                    'image_name': image_name,
+                    'dockerfile': str(dockerfile_path),
+                    'context': context,
+                    'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
+                    'first_tag': tags[0] if tags else 'latest',
+                    'platforms': platform,
+                    'runner': get_runner_for_platform(platform),
+                    'build_args': image_config.get('build_args', {}),
+                    'source': source_name
+                })
 
     result = {'matrix': matrix}
 
