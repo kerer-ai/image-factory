@@ -172,10 +172,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ toJson(matrix.build_args) }}
           cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms == 'linux/amd64' && 'amd64' || 'arm64' }}
             type=gha
           cache-to: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms }},mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
             type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
