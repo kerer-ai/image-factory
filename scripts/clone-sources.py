@@ -60,6 +60,17 @@ def clone_sources(config_path: str, output_dir: str) -> bool:
 
         print(f"Successfully cloned {name}")
 
+        # 检查是否有 submodule，如果有则初始化
+        gitmodules_path = target_dir / '.gitmodules'
+        if gitmodules_path.exists():
+            print(f"Initializing submodules for {name}...")
+            submodule_cmd = ['git', 'submodule', 'update', '--init', '--recursive', '--depth', '1']
+            result = subprocess.run(submodule_cmd, cwd=str(target_dir), capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"Error initializing submodules for {name}: {result.stderr}")
+                return False
+            print(f"Successfully initialized submodules for {name}")
+
     return True
 
 
