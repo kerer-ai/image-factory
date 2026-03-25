@@ -164,7 +164,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}
           tags: |
             ${{ matrix.tags }}
-            type=sha,prefix=
 
       - name: Set cache config
         id: cache
@@ -250,3 +249,8 @@ jobs:
             sbom-${{ matrix.first_tag }}.spdx.json
             sbom-${{ matrix.first_tag }}.cdx.json
           retention-days: 30
+
+      - name: Remove local tag
+        if: always() && github.event.inputs.push != 'false'
+        run: |
+          docker buildx imagetools rm ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}-local || true
