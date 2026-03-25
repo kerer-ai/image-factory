@@ -142,7 +142,6 @@ jobs:
     outputs:
       build_status: ${{ steps.build_info.outputs.status }}
       image_name: ${{ steps.build_info.outputs.image_name }}
-      image_tags: ${{ steps.build_info.outputs.image_tags }}
       platform: ${{ steps.build_info.outputs.platform }}
       first_tag: ${{ steps.build_info.outputs.first_tag }}
     steps:
@@ -272,7 +271,6 @@ jobs:
             echo "status=failed" >> $GITHUB_OUTPUT
           fi
           echo "image_name=${{ matrix.image_name }}" >> $GITHUB_OUTPUT
-          echo "image_tags=${{ steps.meta.outputs.tags }}" >> $GITHUB_OUTPUT
           echo "platform=${{ matrix.platforms }}" >> $GITHUB_OUTPUT
           echo "first_tag=${{ matrix.first_tag }}" >> $GITHUB_OUTPUT
 
@@ -282,7 +280,6 @@ jobs:
           {
             "status": "${{ job.status }}",
             "image_name": "${{ matrix.image_name }}",
-            "tags": ${{ toJson(matrix.tags) }},
             "platform": "${{ matrix.platforms }}",
             "first_tag": "${{ matrix.first_tag }}",
             "registry": "${{ env.REGISTRY }}",
