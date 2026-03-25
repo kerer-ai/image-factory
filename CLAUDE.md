@@ -38,21 +38,19 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 
 ## 配置文件格式
 
-每个配置文件独立完整：
+详见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
 
-```yaml
-# config/pytorch-images.yml
-sources:
-  - name: pytorch
-    url: https://github.com/org/pytorch.git
-    branch: main
+## Skills
 
-images:
-  - name: pytorch
-    source: pytorch
-    dockerfile: Dockerfile
-    tags: [latest, v1.0]
-    platforms: [linux/amd64]
+本项目提供以下 Claude Code Skills：
+
+| Skill | 触发方式 | 说明 |
+|-------|----------|------|
+| `add-image-config` | "添加 xxx 仓库镜像配置" | 自动化添加新仓库的镜像构建配置 |
+
+使用示例：
+```
+帮我添加 xxx 仓库的镜像配置
 ```
 
 ## 构建矩阵生成
