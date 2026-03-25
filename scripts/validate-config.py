@@ -32,20 +32,11 @@ def validate_config(config_path: str) -> bool:
         print("Error: Config file is empty")
         return False
 
-    # 验证全局配置
-    if 'global' not in config:
-        errors.append("Missing 'global' section")
-    else:
-        if 'registry' not in config['global']:
-            warnings.append("Missing 'global.registry', will use quay.io")
-        if 'organization' not in config['global']:
-            errors.append("Missing 'global.organization'")
-        if 'platforms' not in config['global']:
-            warnings.append("Missing 'global.platforms', will use defaults")
-
-    # 验证 sources
+    # 验证 sources（必需）
     source_names = []
-    if 'sources' in config:
+    if 'sources' not in config or not config['sources']:
+        errors.append("Missing or empty 'sources' section")
+    else:
         for i, source in enumerate(config['sources']):
             if 'name' not in source:
                 errors.append(f"Source {i}: missing 'name'")
@@ -54,8 +45,10 @@ def validate_config(config_path: str) -> bool:
             if 'url' not in source:
                 errors.append(f"Source {i}: missing 'url'")
 
-    # 验证 images
-    if 'images' in config:
+    # 验证 images（必需）
+    if 'images' not in config or not config['images']:
+        errors.append("Missing or empty 'images' section")
+    else:
         for i, image in enumerate(config['images']):
             if 'name' not in image:
                 errors.append(f"Image {i}: missing 'name'")
@@ -84,8 +77,8 @@ def validate_config(config_path: str) -> bool:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Validate images.yaml config')
-    parser.add_argument('config', help='Path to images.yaml')
+    parser = argparse.ArgumentParser(description='Validate config file')
+    parser.add_argument('config', help='Path to config file (*-images.yml)')
 
     args = parser.parse_args()
     success = validate_config(args.config)
