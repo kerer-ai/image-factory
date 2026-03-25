@@ -69,8 +69,10 @@ images:
 | `images[].name` | string | 是 | 镜像名称 |
 | `images[].source` | string | 是 | 引用的源仓库名称 |
 | `images[].dockerfile` | string | 否 | Dockerfile 路径，默认 Dockerfile |
-| `images[].tags` | list | 否 | 镜像标签列表 |
+| `images[].tags` | list | 否 | 镜像标签列表（自动添加时间戳后缀） |
 | `images[].platforms` | list | 否 | 目标平台 |
+
+> 详细配置说明请参考 [配置说明文档](docs/CONFIGURATION.md)。
 
 ## 触发方式
 
@@ -139,11 +141,15 @@ image-factory/
 ├── config/
 │   ├── pytorch-images.yml  # PyTorch 镜像配置
 │   └── *-images.yml        # 其他项目配置
+├── docs/
+│   ├── ARCHITECTURE.md     # 架构设计文档
+│   ├── CONFIGURATION.md    # 配置说明文档
+│   └── PRD.md              # 产品需求文档
 ├── scripts/
 │   ├── clone-sources.py    # 源仓库克隆脚本
 │   ├── scan-dockerfiles.py # Dockerfile 扫描脚本
-│   ├── validate-config.py  # 配置校验脚本
-│   └── list-configs.py     # 列出所有配置文件
+│   └── validate-config.py  # 配置校验脚本
+├── CONTRIBUTING.md         # 贡献指南
 └── README.md
 ```
 
@@ -152,9 +158,6 @@ image-factory/
 ```bash
 # 验证配置文件
 python3 scripts/validate-config.py config/pytorch-images.yml
-
-# 列出所有配置
-python3 scripts/list-configs.py
 
 # 手动触发指定配置
 gh workflow run build-images.yml -f config=pytorch-images.yml
@@ -176,3 +179,11 @@ gh workflow run build-images.yml -f config=pytorch-images.yml -f push=false
 ## License
 
 MIT
+
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 配置说明文档 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计文档 |
