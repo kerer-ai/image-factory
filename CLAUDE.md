@@ -28,6 +28,15 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 
 每个平台生成独立的矩阵任务，使用各自的 Runner，实现并行构建。
 
+## 开发规范
+
+**文档同步：** 修改代码或 workflow 后，及时更新相关文档：
+- 新增脚本 → 更新「关键脚本」表格
+- 修改配置格式 → 更新 `docs/CONFIGURATION.md`
+- 修改 workflow 逻辑 → 更新 `docs/ARCHITECTURE.md`
+- 遇到问题并修复 → 更新 `docs/LESSONS-LEARNED.md`
+- 新增文档 → 更新 README.md 和 CLAUDE.md 的「相关文档」表格
+
 ## 关键脚本
 
 | 脚本 | 用途 |
