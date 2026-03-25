@@ -64,12 +64,6 @@ def validate_config(config_path: str) -> bool:
             elif image['source'] not in source_names:
                 errors.append(f"Image {i}: source '{image['source']}' not found in sources")
 
-    # 验证通知配置
-    if 'notifications' in config:
-        email = config['notifications'].get('email', {})
-        if email.get('enabled') and not email.get('recipients'):
-            warnings.append("Email notifications enabled but no recipients configured")
-
     # 输出结果
     if warnings:
         print("\nWarnings:")

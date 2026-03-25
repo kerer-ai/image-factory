@@ -50,10 +50,3 @@ sbom:
     - spdx
     - cyclonedx
   retention_days: 30
-
-# 通知配置
-notifications:
-  email:
-    enabled: true
-    recipients:
-      - team@example.com

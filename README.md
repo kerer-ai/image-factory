@@ -19,17 +19,12 @@
 | `QUAY_USERNAME` | quay.io 用户名 |
 | `QUAY_ROBOT_TOKEN` | quay.io Robot Token |
 | `SSH_DEPLOY_KEY_*` | 私有仓库 Deploy Key（可选） |
-| `SMTP_USERNAME` | SMTP 用户名（可选） |
-| `SMTP_PASSWORD` | SMTP 密码（可选） |
 
 ### 2. 配置 GitHub Variables
 
 | 变量名 | 说明 |
 |--------|------|
 | `QUAY_ORG` | quay.io 组织名 |
-| `NOTIFICATION_RECIPIENTS` | 通知邮箱（可选） |
-| `SMTP_SERVER` | SMTP 服务器（可选） |
-| `SMTP_PORT` | SMTP 端口（可选） |
 
 ### 3. 编辑配置文件
 

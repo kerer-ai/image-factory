@@ -222,30 +222,3 @@ jobs:
             sbom-${{ matrix.image_name }}.spdx.json
             sbom-${{ matrix.image_name }}.cdx.json
           retention-days: 30
-
-  # ==================== 通知阶段 ====================
-  notify:
-    needs: [prepare, build]
-    if: failure()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send failure notification
-        if: vars.NOTIFICATION_RECIPIENTS != ''
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ vars.SMTP_SERVER }}
-          server_port: ${{ vars.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: '[镜像工厂] 构建失败 - ${{ github.repository }}'
-          to: ${{ vars.NOTIFICATION_RECIPIENTS }}
-          from: Image Factory Bot
-          body: |
-            构建任务执行失败！
-
-            仓库: ${{ github.repository }}
-            分支: ${{ github.ref }}
-            提交: ${{ github.sha }}
-            触发者: ${{ github.actor }}
-
-            查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
