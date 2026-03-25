@@ -152,6 +152,7 @@ def generate_matrix(
                 'dockerfile': str(dockerfile),
                 'context': context,
                 'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
+                'first_tag': tags[0] if tags else 'latest',
                 'platforms': ','.join(metadata['platforms']),
                 'build_args': metadata['build_args'],
                 'source': repo_name
@@ -209,6 +210,7 @@ def generate_matrix(
                 'dockerfile': str(dockerfile_path),
                 'context': context,
                 'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
+                'first_tag': tags[0] if tags else 'latest',
                 'platforms': ','.join(platforms),
                 'build_args': image_config.get('build_args', {}),
                 'source': source_name

@@ -181,7 +181,7 @@ jobs:
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
@@ -201,7 +201,7 @@ jobs:
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'spdx-json'
           output: 'sbom-${{ matrix.image_name }}.spdx.json'
 
@@ -209,7 +209,7 @@ jobs:
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:latest
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}
           format: 'cyclonedx'
           output: 'sbom-${{ matrix.image_name }}.cdx.json'
 
