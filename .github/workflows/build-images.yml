@@ -139,6 +139,12 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.clone.outputs.matrix) }}
       fail-fast: false
+    outputs:
+      build_status: ${{ steps.build_info.outputs.status }}
+      image_name: ${{ steps.build_info.outputs.image_name }}
+      image_tags: ${{ steps.build_info.outputs.image_tags }}
+      platform: ${{ steps.build_info.outputs.platform }}
+      first_tag: ${{ steps.build_info.outputs.first_tag }}
     steps:
       - name: Download sources
         uses: actions/download-artifact@v4
@@ -254,3 +260,186 @@ jobs:
         if: always() && github.event.inputs.push != 'false'
         run: |
           docker buildx imagetools rm ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ matrix.first_tag }}-local || true
+
+      - name: Output build info
+        id: build_info
+        if: always()
+        run: |
+          # 输出构建状态
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+          fi
+          echo "image_name=${{ matrix.image_name }}" >> $GITHUB_OUTPUT
+          echo "image_tags=${{ steps.meta.outputs.tags }}" >> $GITHUB_OUTPUT
+          echo "platform=${{ matrix.platforms }}" >> $GITHUB_OUTPUT
+          echo "first_tag=${{ matrix.first_tag }}" >> $GITHUB_OUTPUT
+
+          # 创建构建信息文件供 summary 使用
+          mkdir -p build-info
+          cat > build-info/info.json << EOF
+          {
+            "status": "${{ job.status }}",
+            "image_name": "${{ matrix.image_name }}",
+            "tags": ${{ toJson(matrix.tags) }},
+            "platform": "${{ matrix.platforms }}",
+            "first_tag": "${{ matrix.first_tag }}",
+            "registry": "${{ env.REGISTRY }}",
+            "org": "${{ env.ORG }}"
+          }
+          EOF
+
+      - name: Upload build info
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info-${{ matrix.first_tag }}
+          path: build-info/info.json
+          retention-days: 1
+
+  # ==================== 构建总结 ====================
+  summary:
+    needs: build
+    if: always() && needs.build.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build info artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-info-*
+          path: build-infos/
+          merge-multiple: false
+
+      - name: Download all Trivy report artifacts
+        if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trivy-report-*
+          path: trivy-reports/
+          merge-multiple: false
+
+      - name: Generate build summary
+        run: |
+          echo "## 🏗️ 构建总结" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 统计构建数量
+          total_builds=$(find build-infos -name "info.json" 2>/dev/null | wc -l)
+          success_builds=$(find build-infos -name "info.json" -exec grep -l '"status": "success"' {} \; 2>/dev/null | wc -l)
+          failed_builds=$((total_builds - success_builds))
+
+          echo "### 📊 构建统计" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 指标 | 数量 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 总构建数 | $total_builds |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ 成功 | $success_builds |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ 失败 | $failed_builds |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 镜像列表和下载命令
+          echo "### 📦 构建镜像" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          REGISTRY="${{ env.REGISTRY }}"
+          ORG="${{ env.ORG }}"
+
+          echo "| 镜像 | 平台 | 标签 | 下载命令 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|------|----------|" >> $GITHUB_STEP_SUMMARY
+
+          for info_file in build-infos/*/info.json; do
+            if [ -f "$info_file" ]; then
+              status=$(jq -r '.status' "$info_file")
+              image_name=$(jq -r '.image_name' "$info_file")
+              platform=$(jq -r '.platform' "$info_file")
+              first_tag=$(jq -r '.first_tag' "$info_file")
+
+              if [ "$status" = "success" ]; then
+                pull_cmd="docker pull $REGISTRY/$ORG/$image_name:$first_tag"
+                echo "| \`$image_name\` | \`$platform\` | \`$first_tag\` | \`$pull_cmd\` |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| \`$image_name\` | \`$platform\` | \`$first_tag\` | ❌ 构建失败 |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 漏洞扫描总结
+          if [ "${{ github.event.inputs.skip_scan }}" != "true" ] && [ "${{ github.event.inputs.push }}" != "false" ]; then
+            echo "### 🔒 安全扫描结果" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "| 镜像标签 | CRITICAL | HIGH | MEDIUM | LOW | 状态 |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|----------|------|--------|-----|------|" >> $GITHUB_STEP_SUMMARY
+
+            for report_dir in trivy-reports/trivy-report-*; do
+              if [ -d "$report_dir" ]; then
+                # 获取标签名
+                tag=$(basename "$report_dir")
+                report_file=$(find "$report_dir" -name "*.txt" | head -1)
+
+                if [ -f "$report_file" ]; then
+                  # 解析 Trivy Total 行获取漏洞统计
+                  total_line=$(grep -E "^Total:" "$report_file" | tail -1)
+
+                  if [ -n "$total_line" ]; then
+                    # 解析: Total: 5 (UNKNOWN: 0, LOW: 1, MEDIUM: 2, HIGH: 1, CRITICAL: 1)
+                    critical=$(echo "$total_line" | grep -oP 'CRITICAL:\s*\K\d+' || echo "0")
+                    high=$(echo "$total_line" | grep -oP 'HIGH:\s*\K\d+' || echo "0")
+                    medium=$(echo "$total_line" | grep -oP 'MEDIUM:\s*\K\d+' || echo "0")
+                    low=$(echo "$total_line" | grep -oP 'LOW:\s*\K\d+' || echo "0")
+                  else
+                    # 如果没有 Total 行，可能是无漏洞或解析失败
+                    critical=0
+                    high=0
+                    medium=0
+                    low=0
+                  fi
+
+                  # 判断安全状态
+                  if [ "$critical" -gt 0 ]; then
+                    status="🔴 存在严重漏洞"
+                  elif [ "$high" -gt 0 ]; then
+                    status="🟡 存在高危漏洞"
+                  elif [ "$medium" -gt 0 ] || [ "$low" -gt 0 ]; then
+                    status="🟢 存在低/中危漏洞"
+                  else
+                    status="✅ 无已知漏洞"
+                  fi
+
+                  echo "| \`$tag\` | $critical | $high | $medium | $low | $status |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+            done
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> ⚠️ 注意：漏洞扫描仅报告 CRITICAL 和 HIGH 级别漏洞，不阻止镜像推送" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # 构建产物说明
+          echo "### 📁 构建产物" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "本次构建生成以下产物（保留 30 天）：" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 产物类型 | 命名格式 | 说明 |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy 扫描报告 | \`trivy-report-<tag>.txt\` | 漏洞扫描详细结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "| SBOM (SPDX) | \`sbom-<tag>.spdx.json\` | SPDX 格式软件物料清单 |" >> $GITHUB_STEP_SUMMARY
+          echo "| SBOM (CycloneDX) | \`sbom-<tag>.cdx.json\` | CycloneDX 格式软件物料清单 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 构建信息
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ℹ️ 构建信息" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **触发方式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **构建时间**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **仓库**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **分支**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
