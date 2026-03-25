@@ -94,15 +94,10 @@ def get_commit_sha(source_dir: Path) -> str:
     return 'unknown'
 
 
-def generate_matrix(
-    config_path: str,
-    sources_dir: str,
-    output_path: str
-):
-    """生成构建矩阵"""
+def process_config(config_path: str, sources_path: Path) -> List[Dict[str, Any]]:
+    """处理单个配置文件，返回构建矩阵列表"""
 
     matrix = []
-    sources_path = Path(sources_dir)
 
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -139,12 +134,10 @@ def generate_matrix(
         platforms = image_config.get('platforms', metadata['platforms'])
 
         # 确定构建上下文
-        # 支持配置 context，默认使用仓库根目录
         context_config = image_config.get('context', '')
         if context_config:
             context = str(source_dir / context_config)
         else:
-            # 默认使用仓库根目录作为上下文
             context = str(source_dir)
 
         # 为每个平台创建独立的构建任务
@@ -161,28 +154,45 @@ def generate_matrix(
                 'source': source_name
             })
 
-    result = {'matrix': matrix}
+    return matrix
+
+
+def generate_matrix(
+    config_paths: List[str],
+    sources_dir: str,
+    output_path: str
+):
+    """生成构建矩阵，支持多个配置文件"""
+
+    sources_path = Path(sources_dir)
+    all_matrix = []
+
+    for config_path in config_paths:
+        print(f"Processing config: {config_path}")
+        matrix = process_config(config_path, sources_path)
+        all_matrix.extend(matrix)
+
+    result = {'matrix': all_matrix}
 
     with open(output_path, 'w') as f:
         json.dump(result, f, indent=2)
 
-    print(f"Generated matrix with {len(matrix)} images")
+    print(f"Generated matrix with {len(all_matrix)} images")
 
-    # 输出矩阵内容供调试
-    for item in matrix:
+    for item in all_matrix:
         print(f"  - {item['image_name']}: {item['first_tag']}")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scan Dockerfiles and generate build matrix')
-    parser.add_argument('--config', required=True, help='Path to config file')
+    parser.add_argument('--config', required=True, nargs='+', help='Path to config file(s)')
     parser.add_argument('--sources', required=True, help='Directory containing cloned sources')
     parser.add_argument('--output', required=True, help='Output JSON file path')
 
     args = parser.parse_args()
 
     generate_matrix(
-        config_path=args.config,
+        config_paths=args.config,
         sources_dir=args.sources,
         output_path=args.output
     )

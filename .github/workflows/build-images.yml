@@ -114,9 +114,9 @@ jobs:
         id: scan
         run: |
           configs='${{ needs.prepare.outputs.configs }}'
-          first_config=$(echo "$configs" | jq -r '.[0]')
+          config_args=$(echo "$configs" | jq -r '.[]' | xargs -I {} echo "--config {}")
           python3 scripts/scan-dockerfiles.py \
-            --config "$first_config" \
+            $config_args \
             --sources sources/ \
             --output matrix.json
 
@@ -236,8 +236,6 @@ jobs:
       - name: Pull image for scanning
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         run: |
-          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}-local \
-            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
 
       - name: Run Trivy vulnerability scanner
@@ -250,14 +248,14 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}.txt'
+          output: 'trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.txt'
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}
-          path: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}.txt
+          name: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
+          path: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.txt
           retention-days: 30
 
       - name: Generate SBOM (SPDX format)
@@ -266,7 +264,7 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'spdx-json'
-          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.spdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.spdx.json'
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
@@ -274,22 +272,17 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'cyclonedx'
-          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.cdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.cdx.json'
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}
+          name: sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
           path: |
-            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.spdx.json
-            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}.cdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.spdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.cdx.json
           retention-days: 30
-
-      - name: Remove local tag
-        if: always() && github.event.inputs.push != 'false'
-        run: |
-          docker buildx imagetools rm ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}-local || true
 
       - name: Output build info
         id: build_info
@@ -322,7 +315,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-info-${{ steps.tags.outputs.first_tag_with_timestamp }}
+          name: build-info-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
           path: build-info/info.json
           retention-days: 1
 
