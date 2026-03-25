@@ -171,8 +171,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ toJson(matrix.build_args) }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms }}
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:buildcache-${{ matrix.platforms }},mode=max
+            type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
