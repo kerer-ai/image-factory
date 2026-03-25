@@ -13,8 +13,7 @@ images:
     source: pytorch
     dockerfile: ci/docker/X86/Dockerfile
     tags:
-      - x86-manylinux2.1-latest
-      - x86-manylinux2.1-2.0
+      - x86-manylinux2.1-nightly
     platforms:
       - linux/amd64
 
@@ -23,8 +22,7 @@ images:
     source: pytorch
     dockerfile: ci/docker/ARM/Dockerfile
     tags:
-      - arm-manylinux2014-latest
-      - arm-manylinux2014-2.0
+      - arm-manylinux2014-nightly
     platforms:
       - linux/arm64
 
