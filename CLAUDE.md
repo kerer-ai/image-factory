@@ -90,8 +90,8 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 ## 常用命令
 
 ```bash
-# 校验配置
-python3 scripts/validate-config.py config/pytorch-images.yml
+# 校验配置（使用 uv 虚拟环境）
+uv run python scripts/validate-config.py config/pytorch-images.yml
 
 # 手动触发指定配置
 gh workflow run build-images.yml -f config=pytorch-images.yml -f push=true
