@@ -151,7 +151,7 @@ def generate_matrix(
                 'image_name': metadata['name'],
                 'dockerfile': str(dockerfile),
                 'context': context,
-                'tags': ','.join(tags),
+                'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
                 'platforms': ','.join(metadata['platforms']),
                 'build_args': metadata['build_args'],
                 'source': repo_name
@@ -208,7 +208,7 @@ def generate_matrix(
                 'image_name': image_name,
                 'dockerfile': str(dockerfile_path),
                 'context': context,
-                'tags': ','.join(tags),
+                'tags': '\n'.join([f'type=raw,value={t}' for t in tags]),
                 'platforms': ','.join(platforms),
                 'build_args': image_config.get('build_args', {}),
                 'source': source_name

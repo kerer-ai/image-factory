@@ -161,7 +161,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}
           tags: |
-            type=raw,value=${{ matrix.tags }}
+            ${{ matrix.tags }}
             type=sha,prefix=
 
       - name: Build and push
