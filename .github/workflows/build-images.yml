@@ -180,26 +180,23 @@ jobs:
                   fi
                 done
 
-                # 构建矩阵条目
-                entry=$(cat <<ENTRY
-            {
-              "image_name": "$image_name",
-              "source": "$source_name",
-              "branch": "$branch",
-              "dockerfile": "$dockerfile",
-              "context": "$context",
-              "repository": "$repository",
-              "registry": "$img_registry",
-              "org": "$img_org",
-              "tags": "$tags",
-              "tags_str": "$tags_str",
-              "first_tag": "$(echo "$tags" | cut -d',' -f1 | xargs)",
-              "platform": "$platform",
-              "runner": "$runner",
-              "build_args": "$build_args"
-            }
-ENTRY
-)
+                # 构建矩阵条目（使用 jq 构建 JSON）
+                entry=$(jq -n \
+                  --arg image_name "$image_name" \
+                  --arg source "$source_name" \
+                  --arg branch "$branch" \
+                  --arg dockerfile "$dockerfile" \
+                  --arg context "$context" \
+                  --arg repository "$repository" \
+                  --arg registry "$img_registry" \
+                  --arg org "$img_org" \
+                  --arg tags "$tags" \
+                  --arg tags_str "$tags_str" \
+                  --arg first_tag "$(echo "$tags" | cut -d',' -f1 | xargs)" \
+                  --arg platform "$platform" \
+                  --arg runner "$runner" \
+                  --arg build_args "$build_args" \
+                  '{image_name: $image_name, source: $source, branch: $branch, dockerfile: $dockerfile, context: $context, repository: $repository, registry: $registry, org: $org, tags: $tags, tags_str: $tags_str, first_tag: $first_tag, platform: $platform, runner: $runner, build_args: $build_args}')
                 all_images+=("$entry")
               done
             done
