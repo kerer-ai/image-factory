@@ -56,6 +56,8 @@ def validate_config(config_path: str) -> bool:
                 errors.append(f"Image {i}: missing 'source'")
             elif image['source'] not in source_names:
                 errors.append(f"Image {i}: source '{image['source']}' not found in sources")
+            if 'repository' not in image:
+                errors.append(f"Image {i}: missing 'repository' (required for image push address)")
 
     # 输出结果
     if warnings:

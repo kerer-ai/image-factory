@@ -31,10 +31,6 @@ on:
     paths:
       - 'config/*-images.yml'
 
-env:
-  REGISTRY: quay.io
-  ORG: ${{ vars.QUAY_ORG || 'kerer' }}
-
 jobs:
   # ==================== 准备阶段 ====================
   prepare:
@@ -144,6 +140,9 @@ jobs:
       image_name: ${{ steps.build_info.outputs.image_name }}
       platform: ${{ steps.build_info.outputs.platform }}
       first_tag: ${{ steps.build_info.outputs.first_tag }}
+    env:
+      REGISTRY: ${{ matrix.registry }}
+      ORG: ${{ matrix.org }}
     steps:
       - name: Download sources
         uses: actions/download-artifact@v4
@@ -168,6 +167,10 @@ jobs:
           # 生成时间戳 yyyymmddHHMMSS
           TIMESTAMP=$(date -u '+%Y%m%d%H%M%S')
           echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+          # 将平台中的 / 替换为 -（用于 artifact 名称）
+          PLATFORM_SAFE=$(echo "${{ matrix.platforms }}" | tr '/' '-')
+          echo "platform_safe=${PLATFORM_SAFE}" >> $GITHUB_OUTPUT
 
           # 解析原始 tags 并添加时间戳后缀
           ORIGINAL_TAGS='${{ matrix.tags }}'
@@ -201,7 +204,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}
           tags: |
             ${{ steps.tags.outputs.tags_with_timestamp }}
 
@@ -236,52 +239,52 @@ jobs:
       - name: Pull image for scanning
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         run: |
-          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
 
       - name: Run Trivy vulnerability scanner
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.txt'
+          output: 'trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.txt'
 
       - name: Upload Trivy scan results
         if: always() && github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
-          path: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.txt
+          name: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}
+          path: trivy-report-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.txt
           retention-days: 30
 
       - name: Generate SBOM (SPDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'spdx-json'
-          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.spdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.spdx.json'
 
       - name: Generate SBOM (CycloneDX format)
         if: github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.image_name }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
           format: 'cyclonedx'
-          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.cdx.json'
+          output: 'sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.cdx.json'
 
       - name: Upload SBOM artifacts
         if: always() && github.event.inputs.skip_sbom != 'true' && github.event.inputs.push != 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
+          name: sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}
           path: |
-            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.spdx.json
-            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}.cdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.spdx.json
+            sbom-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}.cdx.json
           retention-days: 30
 
       - name: Output build info
@@ -295,6 +298,7 @@ jobs:
             echo "status=failed" >> $GITHUB_OUTPUT
           fi
           echo "image_name=${{ matrix.image_name }}" >> $GITHUB_OUTPUT
+          echo "repository=${{ matrix.repository }}" >> $GITHUB_OUTPUT
           echo "platform=${{ matrix.platforms }}" >> $GITHUB_OUTPUT
           echo "first_tag=${{ steps.tags.outputs.first_tag_with_timestamp }}" >> $GITHUB_OUTPUT
 
@@ -304,6 +308,7 @@ jobs:
           {
             "status": "${{ job.status }}",
             "image_name": "${{ matrix.image_name }}",
+            "repository": "${{ matrix.repository }}",
             "platform": "${{ matrix.platforms }}",
             "first_tag": "${{ steps.tags.outputs.first_tag_with_timestamp }}",
             "registry": "${{ env.REGISTRY }}",
@@ -315,7 +320,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-info-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ matrix.platforms }}
+          name: build-info-${{ steps.tags.outputs.first_tag_with_timestamp }}-${{ steps.tags.outputs.platform_safe }}
           path: build-info/info.json
           retention-days: 1
 
@@ -365,9 +370,6 @@ jobs:
           echo "### 📦 构建镜像" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          REGISTRY="${{ env.REGISTRY }}"
-          ORG="${{ env.ORG }}"
-
           echo "| 镜像 | 平台 | 标签 | 下载命令 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|------|----------|" >> $GITHUB_STEP_SUMMARY
 
@@ -375,11 +377,14 @@ jobs:
             if [ -f "$info_file" ]; then
               status=$(jq -r '.status' "$info_file")
               image_name=$(jq -r '.image_name' "$info_file")
+              repository=$(jq -r '.repository' "$info_file")
               platform=$(jq -r '.platform' "$info_file")
               first_tag=$(jq -r '.first_tag' "$info_file")
+              registry=$(jq -r '.registry' "$info_file")
+              org=$(jq -r '.org' "$info_file")
 
               if [ "$status" = "success" ]; then
-                pull_cmd="docker pull $REGISTRY/$ORG/$image_name:$first_tag"
+                pull_cmd="docker pull $registry/$org/$repository:$first_tag"
                 echo "| \`$image_name\` | \`$platform\` | \`$first_tag\` | \`$pull_cmd\` |" >> $GITHUB_STEP_SUMMARY
               else
                 echo "| \`$image_name\` | \`$platform\` | \`$first_tag\` | ❌ 构建失败 |" >> $GITHUB_STEP_SUMMARY

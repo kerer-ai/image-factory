@@ -1,5 +1,9 @@
 # PyTorch 镜像构建配置
 
+# 镜像仓库配置
+registry: quay.io
+org: kerer
+
 # 源仓库列表
 sources:
   - name: pytorch
@@ -9,8 +13,10 @@ sources:
 # 镜像构建配置
 images:
   # PyTorch X86 版本 (基于 manylinux-builder:cpu-2.1)
+  # 推送地址: quay.io/kerer/pytorch:x86-manylinux2.1-nightly-<timestamp>
   - name: pytorch
     source: pytorch
+    repository: pytorch
     dockerfile: ci/docker/X86/Dockerfile
     tags:
       - x86-manylinux2.1-nightly
@@ -18,8 +24,10 @@ images:
       - linux/amd64
 
   # PyTorch ARM 版本 (基于 manylinux2014_aarch64)
+  # 推送地址: quay.io/kerer/pytorch:arm-manylinux2014-nightly-<timestamp>
   - name: pytorch
     source: pytorch
+    repository: pytorch
     dockerfile: ci/docker/ARM/Dockerfile
     tags:
       - arm-manylinux2014-nightly

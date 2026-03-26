@@ -22,12 +22,17 @@ sources:
     branch: <分支>      # 可选，默认 main
     ref: <引用>         # 可选，优先于 branch
 
+# 全局镜像仓库配置（可选）
+registry: <registry地址>   # 可选，默认 quay.io
+org: <组织名>              # 可选，默认 kerer
+
 # 镜像定义
 images:
   - name: <镜像名>
     source: <引用的源>
-    dockerfile: <Dockerfile路径>   # 可选，默认 Dockerfile
-    context: <构建上下文>          # 可选，默认仓库根目录
+    repository: <仓库名>          # 必填，镜像推送的仓库名称
+    dockerfile: <Dockerfile路径>  # 可选，默认 Dockerfile
+    context: <构建上下文>         # 可选，默认仓库根目录
     tags:
       - <标签1>
       - <标签2>
@@ -36,6 +41,9 @@ images:
       - <平台2>
     build_args:
       <键>: <值>
+    # 镜像级别的仓库配置（可选，覆盖全局配置）
+    registry: <registry地址>   # 可选，继承全局配置
+    org: <组织名>              # 可选，继承全局配置
 ```
 
 ---
@@ -92,11 +100,14 @@ sources:
 |------|------|------|--------|------|
 | `name` | string | ✅ | - | 镜像名称 |
 | `source` | string | ✅ | - | 引用的 sources 中的 name |
+| `repository` | string | ✅ | - | 镜像仓库名称 |
 | `dockerfile` | string | ❌ | `Dockerfile` | Dockerfile 相对于仓库根目录的路径 |
 | `context` | string | ❌ | 仓库根目录 | Docker 构建上下文路径 |
 | `tags` | list | ❌ | `['latest']` | 镜像标签列表 |
 | `platforms` | list | ❌ | `['linux/amd64', 'linux/arm64']` | 目标构建平台 |
 | `build_args` | map | ❌ | `{}` | 构建参数 |
+| `registry` | string | ❌ | 全局配置 | 镜像仓库地址（如 `quay.io`） |
+| `org` | string | ❌ | 全局配置 | 镜像仓库组织名 |
 
 **示例**：
 
@@ -131,16 +142,53 @@ images:
 
 #### name（镜像名称）
 
-镜像推送到仓库时使用的名称：
+镜像的标识名称，用于：
+- 构建矩阵中区分不同镜像
+- 默认作为仓库名称（除非指定 `repository`）
+
+**命名规范**：
+- 只使用小写字母、数字、`-`、`_`
+- 不超过 63 个字符
+- 以字母或数字开头和结尾
+
+#### repository（仓库名称）【必填】
+
+镜像在仓库中的实际名称，最终镜像地址为：
 
 ```
-quay.io/<org>/<name>:<tag>
+${registry}/${org}/${repository}:${tag}
 ```
 
 **命名规范**：
 - 只使用小写字母、数字、`-`、`_`
 - 不超过 63 个字符
 - 以字母或数字开头和结尾
+
+**示例**：
+
+```yaml
+# 全局配置
+registry: quay.io
+org: kerer
+
+images:
+  # 推送地址: quay.io/kerer/triton:x86-a3-nightly
+  - name: triton-a3
+    source: triton-ascend
+    repository: triton
+
+  # 推送地址: quay.io/kerer/pytorch:x86-latest
+  - name: pytorch-x86
+    source: pytorch
+    repository: pytorch
+```
+
+**为什么是必填参数？**
+
+显式指定 `repository` 可以：
+1. 使推送地址清晰明确，避免歧义
+2. 支持多个镜像推送到同一个仓库（不同标签）
+3. 配置文件更加自文档化
 
 #### source（源引用）
 
@@ -246,6 +294,83 @@ FROM nvidia/cuda:${CUDA_VERSION}-devel
 
 ---
 
+### 镜像仓库配置
+
+支持全局和镜像级别的仓库配置，灵活控制镜像推送目标。
+
+#### 全局配置
+
+在配置文件顶层设置默认的 registry 和组织：
+
+```yaml
+# 全局配置
+registry: quay.io
+org: myorg
+
+sources:
+  - name: myapp
+    url: https://github.com/org/myapp.git
+
+images:
+  - name: myapp
+    source: myapp
+    # 推送目标: quay.io/myorg/myapp:latest
+```
+
+#### 镜像级别配置
+
+可以为每个镜像单独指定 registry、org 和 repository：
+
+```yaml
+registry: quay.io      # 全局默认
+org: kerer             # 全局默认
+
+images:
+  # 使用全局配置
+  - name: myapp
+    source: myapp
+    # 推送目标: quay.io/kerer/myapp:latest
+
+  # 覆盖组织
+  - name: special-app
+    source: myapp
+    org: special-org
+    # 推送目标: quay.io/special-org/special-app:latest
+
+  # 覆盖 registry 和组织
+  - name: docker-app
+    source: myapp
+    registry: docker.io
+    org: mycompany
+    # 推送目标: docker.io/mycompany/docker-app:latest
+
+  # 自定义仓库名
+  - name: myapp
+    source: myapp
+    repository: custom-repo-name
+    # 推送目标: quay.io/kerer/custom-repo-name:latest
+```
+
+#### 配置优先级
+
+| 配置项 | 优先级（从高到低） |
+|--------|-------------------|
+| `registry` | 镜像级 > 全局级 > 默认值 `quay.io` |
+| `org` | 镜像级 > 全局级 > 默认值 `kerer` |
+| `repository` | 必填，必须在镜像配置中显式指定 |
+
+#### 完整镜像地址格式
+
+```
+${registry}/${org}/${repository}:${tag}
+```
+
+示例：
+- `quay.io/kerer/triton-ascend:x86-latest-20260325140000`
+- `docker.io/mycompany/myapp:latest-20260325140000`
+
+---
+
 ### 标签模板变量
 
 在 `tags` 中支持以下模板变量，构建时会自动替换：
@@ -300,6 +425,10 @@ FROM ubuntu:22.04
 ```yaml
 # PyTorch 镜像构建配置
 
+# 镜像仓库配置
+registry: quay.io
+org: kerer
+
 sources:
   - name: pytorch
     url: https://github.com/pytorch/pytorch.git
@@ -309,6 +438,7 @@ images:
   # X86 版本
   - name: pytorch
     source: pytorch
+    repository: pytorch
     dockerfile: ci/docker/X86/Dockerfile
     tags:
       - x86-latest
@@ -321,6 +451,7 @@ images:
   # ARM 版本
   - name: pytorch
     source: pytorch
+    repository: pytorch
     dockerfile: ci/docker/ARM/Dockerfile
     tags:
       - arm-latest
@@ -336,6 +467,10 @@ images:
 ```yaml
 # 多个项目的镜像配置
 
+# 镜像仓库配置
+registry: quay.io
+org: kerer
+
 sources:
   - name: pytorch
     url: https://github.com/pytorch/pytorch.git
@@ -348,11 +483,13 @@ sources:
 images:
   - name: pytorch
     source: pytorch
+    repository: pytorch
     tags: [latest]
     platforms: [linux/amd64]
 
   - name: torchvision
     source: torchvision
+    repository: torchvision
     tags: [latest]
     platforms: [linux/amd64]
 ```
@@ -362,6 +499,10 @@ images:
 ```yaml
 # 最简配置示例
 
+# 镜像仓库配置
+registry: quay.io
+org: kerer
+
 sources:
   - name: myapp
     url: https://github.com/org/myapp.git
@@ -369,6 +510,7 @@ sources:
 images:
   - name: myapp
     source: myapp
+    repository: myapp
 ```
 
 ---

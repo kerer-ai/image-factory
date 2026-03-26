@@ -1,6 +1,10 @@
 # Triton-Ascend 镜像构建配置
 # 项目: https://gitcode.com/Ascend/triton-ascend.git
 
+# 镜像仓库配置
+registry: quay.io
+org: kerer
+
 # 源仓库列表
 sources:
   - name: triton-ascend
@@ -10,8 +14,10 @@ sources:
 # 镜像构建配置
 images:
   # Triton-Ascend X86 版本 - A3 芯片 (默认)
+  # 推送地址: quay.io/kerer/triton:x86-a3-nightly-<timestamp>
   - name: triton-ascend
     source: triton-ascend
+    repository: triton
     dockerfile: docker/Dockerfile
     tags:
       - x86-a3-nightly
@@ -22,8 +28,10 @@ images:
       CANN_VERSION: "8.5.0"
 
   # Triton-Ascend X86 版本 - A2 芯片
+  # 推送地址: quay.io/kerer/triton:x86-a2-nightly-<timestamp>
   - name: triton-ascend
     source: triton-ascend
+    repository: triton
     dockerfile: docker/Dockerfile
     tags:
       - x86-a2-nightly

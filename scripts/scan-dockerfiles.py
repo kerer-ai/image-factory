@@ -102,6 +102,10 @@ def process_config(config_path: str, sources_path: Path) -> List[Dict[str, Any]]
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
+    # 获取全局默认配置
+    global_registry = config.get('registry', 'quay.io')
+    global_org = config.get('org', 'kerer')
+
     for image_config in config.get('images', []):
         source_name = image_config['source']
         source_dir = sources_path / source_name
@@ -140,6 +144,15 @@ def process_config(config_path: str, sources_path: Path) -> List[Dict[str, Any]]
         else:
             context = str(source_dir)
 
+        # 确定 registry、org、repository（支持镜像级别和全局级别配置）
+        registry = image_config.get('registry', global_registry)
+        org = image_config.get('org', global_org)
+        repository = image_config.get('repository')
+
+        if not repository:
+            print(f"Error: Image '{image_config.get('name', 'unknown')}' missing required field 'repository'")
+            continue
+
         # 为每个平台创建独立的构建任务
         for platform in platforms:
             matrix.append({
@@ -151,7 +164,10 @@ def process_config(config_path: str, sources_path: Path) -> List[Dict[str, Any]]
                 'platforms': platform,
                 'runner': get_runner_for_platform(platform),
                 'build_args': image_config.get('build_args', {}),
-                'source': source_name
+                'source': source_name,
+                'registry': registry,
+                'org': org,
+                'repository': repository
             })
 
     return matrix
