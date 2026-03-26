@@ -215,11 +215,7 @@ image-factory/
 │   ├── tensorflow-images.yml      # TensorFlow 镜像配置
 │   └── *-images.yml               # 其他项目配置
 ├── scripts/
-│   ├── clone-sources.py           # 源仓库克隆脚本
-│   ├── scan-dockerfiles.py        # Dockerfile 扫描脚本
-│   ├── validate-config.py         # 配置文件校验脚本
-│   ├── list-configs.py            # 列出所有配置文件
-│   └── detect-changed-configs.py  # 检测变更配置
+│   └── validate-config.py       # 配置文件校验脚本（本地开发工具）
 ├── .gitignore
 └── README.md
 ```

@@ -9,11 +9,15 @@
 │                              配置层                                          │
 │                     config/pytorch-images.yml                                │
 │                                                                              │
+│  registry: quay.io                                                          │
+│  org: kerer                                                                 │
+│                                                                              │
 │  sources:                    images:                                         │
 │    - name: pytorch             - name: pytorch                               │
-│      url: https://...            dockerfile: ci/docker/X86/Dockerfile        │
-│      branch: master             tags: [x86-manylinux2.1-nightly]             │
-│                                 platforms: [linux/amd64]                     │
+│      url: https://...            repository: pytorch                         │
+│      branch: master              dockerfile: ci/docker/X86/Dockerfile        │
+│                                  tags: [x86-manylinux2.1-nightly]             │
+│                                  platforms: [linux/amd64]                     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -22,29 +26,26 @@
 │                         .github/workflows/build-images.yml                   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
-        ┌─────────────────────────────┼─────────────────────────────┐
-        ▼                             ▼                             ▼
-┌───────────────┐           ┌───────────────┐           ┌───────────────┐
-│    prepare    │           │     clone     │           │     build     │
-│     Job       │           │     Job       │           │     Job       │
-└───────────────┘           └───────────────┘           └───────────────┘
-        │                             │                             │
-        ▼                             ▼                             ▼
-┌───────────────┐           ┌───────────────┐           ┌───────────────┐
-│validate-config│           │clone-sources  │           │  Docker Buildx│
-│     .py       │           │     .py       │           │  Trivy Scan   │
-│               │           │scan-dockerfiles│           │  SBOM Generate│
-│               │           │     .py       │           │               │
-└───────────────┘           └───────────────┘           └───────────────┘
+        ┌─────────────────────────────┴─────────────────────────┐
+        ▼                                                         ▼
+┌───────────────────────────┐                       ┌───────────────────────────┐
+│        prepare            │                       │          build            │
+│         Job               │                       │          Job             │
+│                           │                       │                           │
+│  • 检测配置文件            │                       │  • Docker Buildx          │
+│  • 解析配置生成矩阵        │                       │  • Trivy Scan             │
+│  • 克隆源仓库             │                       │  • SBOM Generate          │
+│  • 上传 sources artifact   │──────────────────────▶│  • Upload artifacts       │
+└───────────────────────────┘                       └───────────────────────────┘
 ```
 
 ## 执行流程
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
-│   prepare   │ ──▶ │    clone    │ ──▶ │     build       │ ──▶ │   summary    │
-│  (准备阶段)  │     │  (克隆阶段)  │     │   (构建阶段)     │     │  (总结阶段)   │
-└─────────────┘     └─────────────┘     └─────────────────┘     └──────────────┘
+┌─────────────────┐                    ┌─────────────────┐     ┌──────────────┐
+│     prepare     │ ──────────────────▶ │     build       │ ──▶ │   summary    │
+│    (准备阶段)    │    sources artifact │   (构建阶段)     │     │  (总结阶段)   │
+└─────────────────┘                    └─────────────────┘     └──────────────┘
 ```
 
 ---
@@ -53,7 +54,7 @@
 
 ### 1. prepare - 准备阶段
 
-**职责**: 确定构建目标，校验配置正确性
+**职责**: 检测配置、解析配置生成矩阵、克隆源仓库
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -70,60 +71,35 @@
 │                                      │                                      │
 │                                      ▼                                      │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ Step: Validate configs                                               │   │
+│  │ Step: Parse configs and generate matrix                              │   │
 │  │                                                                      │   │
-│  │ 脚本: scripts/validate-config.py                                     │   │
-│  │ 输入: 配置文件路径                                                    │   │
-│  │ 校验:                                                                 │   │
-│  │   ├── YAML 格式正确性                                                 │   │
-│  │   ├── sources 定义完整性 (name, url)                                  │   │
-│  │   ├── images 定义完整性 (name, source)                                │   │
-│  │   └── 引用完整性 (image.source 存在于 sources 中)                     │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-│  Output: configs (JSON 数组)                                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 2. clone - 克隆阶段
-
-**职责**: 克隆源代码，生成构建矩阵
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  Job: clone                                                                 │
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ Step: Clone source repositories                                      │   │
-│  │                                                                      │   │
-│  │ 脚本: scripts/clone-sources.py                                       │   │
-│  │ 输入: --config 配置文件, --output 输出目录                            │   │
+│  │ 工具: yq (YAML 处理工具)                                              │   │
 │  │ 处理:                                                                 │   │
-│  │   ├── 解析配置文件中的 sources 列表                                   │   │
-│  │   ├── git clone --depth 1 浅克隆                                     │   │
-│  │   └── 支持指定分支/ref                                                │   │
-│  │ 输出: sources/ 目录                                                   │   │
+│  │   ├── 解析配置文件 (registry, org, sources, images)                  │   │
+│  │   ├── 校验必填字段 (repository)                                       │   │
+│  │   ├── 为每个平台生成独立的矩阵项                                      │   │
+│  │   └── 根据平台选择对应 Runner                                         │   │
+│  │ 输出: matrix JSON                                                     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                      │                                      │
 │                                      ▼                                      │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ Step: Scan Dockerfiles and generate matrix                           │   │
+│  │ Step: Clone source repositories                                      │   │
 │  │                                                                      │   │
-│  │ 脚本: scripts/scan-dockerfiles.py                                    │   │
-│  │ 输入: --config 配置文件, --sources 源码目录, --output 输出文件        │   │
 │  │ 处理:                                                                 │   │
-│  │   ├── 检查 Dockerfile 文件存在                                        │   │
-│  │   ├── 解析 Dockerfile 注释元数据                                      │   │
-│  │   ├── 为每个平台生成独立的构建任务                                    │   │
-│  │   └── 根据平台选择对应 Runner                                         │   │
-│  │ 输出: matrix.json                                                     │   │
+│  │   ├── 从 matrix 提取唯一的源仓库列表                                  │   │
+│  │   ├── git clone --depth 1 浅克隆                                     │   │
+│  │   ├── 支持指定分支/ref                                                │   │
+│  │   └── 初始化 submodule (如果存在)                                     │   │
+│  │ 输出: sources/ 目录                                                   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
-│  Output: matrix (构建矩阵 JSON)                                              │
+│  Outputs: matrix (构建矩阵 JSON)                                             │
+│  Artifacts: sources/ (源代码)                                                │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. build - 构建阶段
+### 2. build - 构建阶段
 
 **职责**: 并行构建多架构镜像，执行安全扫描
 
@@ -155,7 +131,7 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4. summary - 总结阶段
+### 3. summary - 总结阶段
 
 **职责**: 汇总构建结果，生成报告
 
@@ -195,7 +171,7 @@
 
 ### scripts/validate-config.py
 
-**用途**: 校验配置文件格式和完整性
+**用途**: 校验配置文件格式和完整性（本地开发工具）
 
 **输入**: 配置文件路径
 
@@ -206,115 +182,14 @@
 | 文件检查 | 文件存在性 |
 | 格式检查 | YAML 语法正确性 |
 | sources 检查 | 必须有 `name` 和 `url` |
-| images 检查 | 必须有 `name` 和 `source` |
+| images 检查 | 必须有 `name`、`source`、`repository` |
 | 引用检查 | image.source 必须在 sources 中定义 |
 
 **退出码**: 0 = 成功, 1 = 失败
 
 **使用示例**:
 ```bash
-python3 scripts/validate-config.py config/pytorch-images.yml
-```
-
----
-
-### scripts/clone-sources.py
-
-**用途**: 根据配置克隆源仓库
-
-**输入参数**:
-- `--config`: 配置文件路径
-- `--output`: 输出目录
-
-**处理流程**:
-```
-解析配置文件 sources
-    │
-    ▼
-遍历每个 source
-    │
-    ├── 检查目录是否存在
-    │   ├── 存在 → 跳过
-    │   └── 不存在 → 执行克隆
-    │
-    ▼
-git clone --depth 1 --branch <ref> <url> <output>/<name>
-```
-
-**输出**: `sources/<name>/` 目录
-
-**使用示例**:
-```bash
-python3 scripts/clone-sources.py \
-  --config config/pytorch-images.yml \
-  --output sources/
-```
-
----
-
-### scripts/scan-dockerfiles.py
-
-**用途**: 扫描 Dockerfile 并生成构建矩阵
-
-**输入参数**:
-- `--config`: 配置文件路径（支持多个，`nargs='+'`）
-- `--sources`: 源码目录
-- `--output`: 输出 JSON 文件路径
-
-**处理流程**:
-```
-解析配置文件 images
-    │
-    ▼
-遍历每个 image 配置
-    │
-    ├── 检查 Dockerfile 是否存在
-    │
-    ├── 解析 Dockerfile 注释元数据 (可选)
-    │   ├── # image-name: <name>
-    │   ├── # image-tags: <tag1>,<tag2>
-    │   └── # platforms: <platform1>,<platform2>
-    │
-    ├── 为每个平台创建独立的矩阵项
-    │   │
-    │   ├── linux/amd64 → runner: ubuntu-latest
-    │   └── linux/arm64 → runner: ubuntu-22.04-arm
-    │
-    ▼
-输出 matrix.json
-```
-
-**输出格式**:
-```json
-{
-  "matrix": [
-    {
-      "image_name": "pytorch",
-      "dockerfile": "sources/pytorch/ci/docker/X86/Dockerfile",
-      "context": "sources/pytorch/ci/docker/X86",
-      "tags": "type=raw,value=x86-manylinux2.1-nightly",
-      "first_tag": "x86-manylinux2.1-nightly",
-      "platforms": "linux/amd64",
-      "runner": "ubuntu-latest",
-      "build_args": {}
-    }
-  ]
-}
-```
-
-**使用示例**:
-```bash
-# 单个配置文件
-python3 scripts/scan-dockerfiles.py \
-  --config config/pytorch-images.yml \
-  --sources sources/ \
-  --output matrix.json
-
-# 多个配置文件
-python3 scripts/scan-dockerfiles.py \
-  --config config/pytorch-images.yml config/triton-ascend-images.yml \
-  --sources sources/ \
-  --output matrix.json
+uv run python scripts/validate-config.py config/pytorch-images.yml
 ```
 
 ---
@@ -330,6 +205,10 @@ config/<project>-images.yml
 ### 配置结构
 
 ```yaml
+# 镜像仓库配置
+registry: quay.io              # 可选，默认 quay.io
+org: kerer                     # 可选，默认 kerer
+
 # 源仓库定义
 sources:
   - name: <唯一标识>           # 必需
@@ -340,27 +219,15 @@ sources:
 images:
   - name: <镜像名称>           # 必需
     source: <引用的 source>    # 必需
+    repository: <仓库名>       # 必需，推送目标仓库名
     dockerfile: <Dockerfile路径> # 可选，默认 Dockerfile
     tags:                      # 可选
       - <tag1>
-      - <tag2>
     platforms:                 # 可选
       - linux/amd64
       - linux/arm64
     build_args:                # 可选
       KEY: value
-
-# 构建配置 (可选)
-build:
-  severity: CRITICAL,HIGH
-  timeout: 30
-
-# SBOM 配置 (可选)
-sbom:
-  enabled: true
-  formats:
-    - spdx
-    - cyclonedx
 ```
 
 ---
@@ -405,8 +272,6 @@ sbom:
 │                              │     │                              │
 │ 原生 x86_64 构建             │     │ 原生 ARM64 构建              │
 │ (非 QEMU 模拟)               │     │ (非 QEMU 模拟)               │
-│                              │     │                              │
-│ 构建时间: ~1.5 分钟          │     │ 构建时间: ~40 秒             │
 └─────────────────────────────┘     └─────────────────────────────┘
                     │                             │
                     └─────────────┬───────────────┘
@@ -424,18 +289,14 @@ sbom:
 │                              GitHub Actions 缓存                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ GitHub Actions 缓存                                                          │
-│                                                                              │
-│ 缓存类型: type=gha,mode=max                                                  │
-│ 缓存范围: 所有构建层                                                          │
-│ 失效策略: 7 天未访问自动清理                                                  │
-│                                                                              │
-│ 优点:                                                                        │
-│ - 无需额外配置 Registry 缓存                                                 │
-│ - 跨构建共享缓存                                                             │
-│ - 构建速度显著提升                                                           │
-└─────────────────────────────────────────────────────────────────────────────┘
+缓存类型: type=gha,mode=max
+缓存范围: 所有构建层
+失效策略: 7 天未访问自动清理
+
+优点:
+- 无需额外配置 Registry 缓存
+- 跨构建共享缓存
+- 构建速度显著提升
 ```
 
 ---
@@ -458,19 +319,13 @@ sbom:
 ### 添加新项目
 
 1. 创建配置文件 `config/<project>-images.yml`
-2. 定义 `sources` 和 `images`
+2. 定义 `registry`、`org`、`sources` 和 `images`
 3. 提交到仓库，自动触发构建
 
 ### 添加新平台
 
-1. 在 `scan-dockerfiles.py` 的 `get_runner_for_platform()` 添加映射
+1. 在 workflow 的矩阵生成逻辑中添加平台到 runner 的映射
 2. 在配置文件中使用新平台
-
-### 自定义构建流程
-
-1. 修改 workflow 文件
-2. 添加新的 Step 或 Job
-3. 调整脚本逻辑
 
 ---
 

@@ -260,9 +260,7 @@ image-factory/
 │   ├── CONFIGURATION.md        # 配置说明文档
 │   └── PRD.md                  # 产品需求文档
 ├── scripts/
-│   ├── validate-config.py      # 配置校验脚本
-│   ├── clone-sources.py        # 源码克隆脚本
-│   └── scan-dockerfiles.py     # Dockerfile 扫描脚本
+│   └── validate-config.py      # 配置校验脚本（本地开发工具）
 ├── CLAUDE.md                   # Claude Code 指南
 ├── CONTRIBUTING.md             # 本文档
 └── README.md                   # 项目说明

@@ -4,7 +4,7 @@
 
 ---
 
-## 案例 1：多配置文件只构建第一个
+## 案例 1：多配置文件只构建第一个（已通过架构简化解决）
 
 ### 问题描述
 
@@ -12,7 +12,7 @@
 
 ### 问题定位
 
-在 `build-images.yml` 的 `Scan Dockerfiles and generate matrix` 步骤中：
+原 `scan-dockerfiles.py` 脚本和 workflow 逻辑中：
 
 ```yaml
 # 错误代码
@@ -27,29 +27,20 @@ python3 scripts/scan-dockerfiles.py \
 
 ### 解决方案
 
-修改 `scan-dockerfiles.py` 支持多配置文件输入：
-
-```python
-# argparse 参数改为支持多个值
-parser.add_argument('--config', required=True, nargs='+', help='Path to config file(s)')
-
-# 循环处理所有配置文件
-for config_path in config_paths:
-    matrix.extend(process_config(config_path, sources_path))
-```
-
-Workflow 中将所有配置文件作为参数传递：
+**最终方案**：简化架构，移除 Python 脚本依赖，使用 yq + shell 在 workflow 中直接处理：
 
 ```yaml
-configs='${{ needs.prepare.outputs.configs }}'
-config_args=$(echo "$configs" | jq -r '.[]' | xargs -I {} echo "--config {}")
-python3 scripts/scan-dockerfiles.py $config_args ...
+# 直接使用 yq 解析所有配置文件
+for config in ${{ steps.detect.outputs.configs }}; do
+  # 解析配置并生成矩阵
+  yq eval '.images[] | ...' "config/$config"
+done
 ```
 
 ### 经验教训
 
 - 处理列表/数组时，注意是否需要遍历全部元素
-- 变量命名如 `first_config` 可能暗示逻辑问题，应使用更准确的命名
+- 复杂逻辑可以考虑简化，减少外部脚本依赖
 
 ---
 

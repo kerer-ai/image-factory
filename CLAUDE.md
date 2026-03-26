@@ -9,13 +9,13 @@
 ## 架构
 
 ```
-config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → quay.io
+config/*-images.yml → prepare (解析配置+克隆源) → build (矩阵并行构建) → quay.io
 ```
 
 **配置文件结构：**
 - 配置文件存放在 `config/` 目录
 - 命名格式：`*-images.yml`（如 `pytorch-images.yml`）
-- 每个配置文件独立完整，包含 sources 和 images 定义
+- 每个配置文件独立完整，包含 sources、images、registry、org 定义
 
 **触发机制：**
 - 定时触发：每日 UTC 2:00 构建所有配置
@@ -31,7 +31,6 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 ## 开发规范
 
 **文档同步：** 修改代码或 workflow 后，及时更新相关文档：
-- 新增脚本 → 更新「关键脚本」表格
 - 修改配置格式 → 更新 `docs/CONFIGURATION.md`
 - 修改 workflow 逻辑 → 更新 `docs/ARCHITECTURE.md`
 - 遇到问题并修复 → 更新 `docs/LESSONS-LEARNED.md`
@@ -41,8 +40,6 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 
 | 脚本 | 用途 |
 |------|------|
-| `scripts/clone-sources.py` | 从配置克隆源仓库 |
-| `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 并生成构建矩阵 JSON |
 | `scripts/validate-config.py` | 校验配置文件格式（本地开发工具） |
 
 ## 配置文件格式
@@ -60,31 +57,6 @@ config/*-images.yml → GitHub Actions → 构建矩阵 → 多架构镜像 → 
 使用示例：
 ```
 帮我添加 xxx 仓库的镜像配置
-```
-
-## 构建矩阵生成
-
-`scan-dockerfiles.py` 生成矩阵时，**每个平台独立成一个 job**：
-
-```json
-{
-  "matrix": [
-    {
-      "image_name": "myapp",
-      "dockerfile": "sources/repo/Dockerfile",
-      "context": "sources/repo",
-      "tags": "type=raw,value=latest\ntype=raw,value=v1.0",
-      "first_tag": "latest",
-      "platforms": "linux/amd64",
-      "runner": "ubuntu-latest"
-    },
-    {
-      "image_name": "myapp",
-      "platforms": "linux/arm64",
-      "runner": "ubuntu-22.04-arm"
-    }
-  ]
-}
 ```
 
 ## 常用命令
@@ -140,10 +112,6 @@ gh run list --workflow=build-images.yml --limit 5
 
 - `QUAY_USERNAME`：quay.io 用户名（格式：`org+robot_name`）
 - `QUAY_ROBOT_TOKEN`：quay.io Robot Token
-
-## 必需的 GitHub Variables
-
-- `QUAY_ORG`：quay.io 组织名
 
 ## 相关文档
 

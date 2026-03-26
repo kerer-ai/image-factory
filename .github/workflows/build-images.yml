@@ -32,27 +32,25 @@ on:
       - 'config/*-images.yml'
 
 jobs:
-  # ==================== 准备阶段 ====================
+  # ==================== 准备阶段：解析配置 + 克隆源 + 生成矩阵 ====================
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      configs: ${{ steps.detect.outputs.configs }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - name: Checkout image-factory
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # 需要获取历史来检测变更
+          fetch-depth: 2
 
       - name: Detect configs to build
         id: detect
         run: |
-          pip install pyyaml
-
           if [ -n "${{ github.event.inputs.config }}" ]; then
             # 手动触发，指定配置文件
             config_file="config/${{ github.event.inputs.config }}"
             if [ -f "$config_file" ]; then
-              configs='["'"$config_file"'"]'
+              configs="$config_file"
               echo "Using specified config: $config_file"
             else
               echo "Error: Config file not found: $config_file"
@@ -60,71 +58,218 @@ jobs:
             fi
           elif [ "${{ github.event_name }}" = "push" ]; then
             # Push 触发，检测变更的配置文件
-            changed=$(git diff --name-only HEAD~1 HEAD | grep 'config/.*-images.yml' || true)
-            if [ -z "$changed" ]; then
-              configs='[]'
+            configs=$(git diff --name-only HEAD~1 HEAD | grep 'config/.*-images.yml' || true)
+            if [ -z "$configs" ]; then
+              configs=""
               echo "No config changes detected"
             else
-              configs=$(echo "$changed" | jq -R -s -c 'split("\n") | map(select(length > 0))')
               echo "Changed configs: $configs"
             fi
           else
             # 定时触发，构建所有配置
-            configs=$(ls config/*-images.yml 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+            configs=$(ls config/*-images.yml 2>/dev/null | tr '\n' ' ')
             echo "Building all configs: $configs"
           fi
-          echo "configs=${configs}" >> $GITHUB_OUTPUT
+          # 保存到文件，避免多行问题
+          echo "$configs" > /tmp/configs.txt
 
-      - name: Validate configs
-        if: steps.detect.outputs.configs != '[]'
+      - name: Parse configs and generate matrix
+        id: matrix
         run: |
-          configs='${{ steps.detect.outputs.configs }}'
-          for config in $(echo "$configs" | jq -r '.[]'); do
-            echo "Validating $config..."
-            python3 scripts/validate-config.py "$config"
+          # 安装 yq 用于解析 YAML
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+          # 读取配置文件列表
+          configs=$(cat /tmp/configs.txt | tr '\n' ' ' | xargs)
+
+          if [ -z "$configs" ]; then
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 全局默认配置
+          DEFAULT_REGISTRY="quay.io"
+          DEFAULT_ORG="kerer"
+
+          # 存储所有镜像配置
+          declare -a all_images=()
+
+          # 解析每个配置文件
+          for config_file in $configs; do
+            echo "Processing: $config_file"
+
+            # 验证配置文件
+            if [ ! -f "$config_file" ]; then
+              echo "Warning: Config file not found: $config_file"
+              continue
+            fi
+
+            # 获取全局配置
+            registry=$(yq '.registry // "'"$DEFAULT_REGISTRY"'"' "$config_file")
+            org=$(yq '.org // "'"$DEFAULT_ORG"'"' "$config_file")
+
+            # 获取源仓库数量
+            source_count=$(yq '.sources | length' "$config_file")
+
+            # 获取镜像数量
+            image_count=$(yq '.images | length' "$config_file")
+
+            echo "  Registry: $registry, Org: $org"
+            echo "  Sources: $source_count, Images: $image_count"
+
+            # 解析每个镜像配置
+            for i in $(seq 0 $((image_count - 1))); do
+              image_name=$(yq ".images[$i].name" "$config_file")
+              source_name=$(yq ".images[$i].source" "$config_file")
+              dockerfile=$(yq ".images[$i].dockerfile // \"Dockerfile\"" "$config_file")
+              context=$(yq ".images[$i].context // \"\"" "$config_file")
+              repository=$(yq ".images[$i].repository // \"\"" "$config_file")
+              img_registry=$(yq ".images[$i].registry // \"$registry\"" "$config_file")
+              img_org=$(yq ".images[$i].org // \"$org\"" "$config_file")
+
+              # 验证必填字段
+              if [ -z "$repository" ] || [ "$repository" = "null" ]; then
+                echo "Error: Image '$image_name' missing required field 'repository'"
+                continue
+              fi
+
+              # 获取 tags
+              tags=$(yq ".images[$i].tags | join(\",\")" "$config_file")
+              if [ -z "$tags" ] || [ "$tags" = "null" ]; then
+                tags="latest"
+              fi
+
+              # 获取 platforms
+              platforms=$(yq ".images[$i].platforms | join(\",\")" "$config_file")
+              if [ -z "$platforms" ] || [ "$platforms" = "null" ]; then
+                platforms="linux/amd64,linux/arm64"
+              fi
+
+              # 获取 build_args
+              build_args=$(yq ".images[$i].build_args | to_entries | map(.key + \"=\" + .value) | join(\",\")" "$config_file")
+              if [ "$build_args" = "null" ]; then
+                build_args=""
+              fi
+
+              # 获取源仓库的分支
+              branch=$(yq ".sources[] | select(.name == \"$source_name\") | .branch // .ref // \"main\"" "$config_file")
+
+              # 为每个平台创建构建任务
+              IFS=',' read -ra PLATFORM_ARRAY <<< "$platforms"
+              for platform in "${PLATFORM_ARRAY[@]}"; do
+                platform=$(echo "$platform" | xargs)  # trim whitespace
+
+                # 确定 runner
+                if [ "$platform" = "linux/arm64" ]; then
+                  runner="ubuntu-22.04-arm"
+                else
+                  runner="ubuntu-latest"
+                fi
+
+                # 构建 tags 字符串（用于 docker metadata-action）
+                tags_str=""
+                IFS=',' read -ra TAG_ARRAY <<< "$tags"
+                for tag in "${TAG_ARRAY[@]}"; do
+                  tag=$(echo "$tag" | xargs)
+                  if [ -z "$tags_str" ]; then
+                    tags_str="type=raw,value=$tag"
+                  else
+                    tags_str="$tags_str
+          type=raw,value=$tag"
+                  fi
+                done
+
+                # 构建矩阵条目
+                entry=$(cat <<ENTRY
+            {
+              "image_name": "$image_name",
+              "source": "$source_name",
+              "branch": "$branch",
+              "dockerfile": "$dockerfile",
+              "context": "$context",
+              "repository": "$repository",
+              "registry": "$img_registry",
+              "org": "$img_org",
+              "tags": "$tags",
+              "tags_str": "$tags_str",
+              "first_tag": "$(echo "$tags" | cut -d',' -f1 | xargs)",
+              "platform": "$platform",
+              "runner": "$runner",
+              "build_args": "$build_args"
+            }
+ENTRY
+)
+                all_images+=("$entry")
+              done
+            done
           done
 
-  # ==================== 克隆源仓库 ====================
-  clone:
-    needs: prepare
-    if: needs.prepare.outputs.configs != '[]'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.scan.outputs.matrix }}
-    steps:
-      - name: Checkout image-factory
-        uses: actions/checkout@v4
+          # 生成最终矩阵 JSON
+          if [ ${#all_images[@]} -eq 0 ]; then
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+          else
+            matrix_json=$(printf '%s\n' "${all_images[@]}" | jq -s '.')
+            echo "matrix=${matrix_json}" >> $GITHUB_OUTPUT
+
+            echo ""
+            echo "Generated build matrix:"
+            echo "$matrix_json" | jq -r '.[] | "  - \(.image_name): \(.first_tag) (\(.platform)) -> \(.registry)/\(.org)/\(.repository)"'
+          fi
 
       - name: Clone source repositories
+        if: steps.matrix.outputs.matrix != '[]'
         run: |
           mkdir -p sources
-          configs='${{ needs.prepare.outputs.configs }}'
-          for config in $(echo "$configs" | jq -r '.[]'); do
-            echo "Cloning sources from $config..."
-            python3 scripts/clone-sources.py \
-              --config "$config" \
-              --output sources/
+
+          # 获取唯一的源仓库列表
+          sources=$(echo '${{ steps.matrix.outputs.matrix }}' | jq -r '.[].source' | sort -u)
+
+          # 获取配置文件中的源仓库信息
+          configs=$(cat /tmp/configs.txt | tr '\n' ' ' | xargs)
+
+          declare -A source_urls
+          declare -A source_refs
+
+          for config_file in $configs; do
+            source_count=$(yq '.sources | length' "$config_file")
+            for i in $(seq 0 $((source_count - 1))); do
+              name=$(yq ".sources[$i].name" "$config_file")
+              url=$(yq ".sources[$i].url" "$config_file")
+              ref=$(yq ".sources[$i].ref // .sources[$i].branch // \"main\"" "$config_file")
+              source_urls["$name"]="$url"
+              source_refs["$name"]="$ref"
+            done
           done
 
-      - name: Scan Dockerfiles and generate matrix
-        id: scan
-        run: |
-          configs='${{ needs.prepare.outputs.configs }}'
-          # 将配置文件列表转换为参数数组
-          config_args=""
-          for config in $(echo "$configs" | jq -r '.[]'); do
-            config_args="$config_args --config $config"
-          done
-          echo "Running: python3 scripts/scan-dockerfiles.py $config_args --sources sources/ --output matrix.json"
-          python3 scripts/scan-dockerfiles.py \
-            $config_args \
-            --sources sources/ \
-            --output matrix.json
+          # 克隆每个源仓库
+          for source in $sources; do
+            url="${source_urls[$source]}"
+            ref="${source_refs[$source]}"
 
-          matrix=$(cat matrix.json | jq -c '.matrix')
-          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+            if [ -z "$url" ]; then
+              echo "Error: Source URL not found for $source"
+              continue
+            fi
+
+            echo "Cloning $source from $url (ref: $ref)..."
+            git clone --depth 1 --branch "$ref" "$url" "sources/$source"
+
+            # 检查 submodule
+            if [ -f "sources/$source/.gitmodules" ]; then
+              echo "Initializing submodules for $source..."
+              cd "sources/$source"
+              git submodule update --init --recursive --depth 1
+              cd -
+            fi
+          done
+
+          echo ""
+          echo "Cloned sources:"
+          ls -la sources/
 
       - name: Upload sources
+        if: steps.matrix.outputs.matrix != '[]'
         uses: actions/upload-artifact@v4
         with:
           name: sources
@@ -133,12 +278,12 @@ jobs:
 
   # ==================== 构建阶段 ====================
   build:
-    needs: clone
-    if: needs.clone.outputs.matrix != '[]'
+    needs: prepare
+    if: needs.prepare.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        include: ${{ fromJson(needs.clone.outputs.matrix) }}
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
       fail-fast: false
     outputs:
       build_status: ${{ steps.build_info.outputs.status }}
@@ -174,28 +319,24 @@ jobs:
           echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
 
           # 将平台中的 / 替换为 -（用于 artifact 名称）
-          PLATFORM_SAFE=$(echo "${{ matrix.platforms }}" | tr '/' '-')
+          PLATFORM_SAFE=$(echo "${{ matrix.platform }}" | tr '/' '-')
           echo "platform_safe=${PLATFORM_SAFE}" >> $GITHUB_OUTPUT
 
           # 解析原始 tags 并添加时间戳后缀
           ORIGINAL_TAGS='${{ matrix.tags }}'
           TAGS_WITH_TIMESTAMP=""
 
-          while IFS= read -r tag_line; do
-            if [ -n "$tag_line" ]; then
-              # 提取 tag 值
-              tag_value=$(echo "$tag_line" | sed 's/type=raw,value=//')
+          IFS=',' read -ra TAG_ARRAY <<< "$ORIGINAL_TAGS"
+          for tag in "${TAG_ARRAY[@]}"; do
+            tag=$(echo "$tag" | xargs)
+            new_tag="${tag}-${TIMESTAMP}"
 
-              # 添加时间戳后缀
-              new_tag="${tag_value}-${TIMESTAMP}"
-
-              if [ -z "$TAGS_WITH_TIMESTAMP" ]; then
-                TAGS_WITH_TIMESTAMP="type=raw,value=${new_tag}"
-              else
-                TAGS_WITH_TIMESTAMP="${TAGS_WITH_TIMESTAMP}"$'\n'"type=raw,value=${new_tag}"
-              fi
+            if [ -z "$TAGS_WITH_TIMESTAMP" ]; then
+              TAGS_WITH_TIMESTAMP="type=raw,value=${new_tag}"
+            else
+              TAGS_WITH_TIMESTAMP="${TAGS_WITH_TIMESTAMP}"$'\n'"type=raw,value=${new_tag}"
             fi
-          done <<< "$ORIGINAL_TAGS"
+          done
 
           echo "tags_with_timestamp<<EOF" >> $GITHUB_OUTPUT
           echo "$TAGS_WITH_TIMESTAMP" >> $GITHUB_OUTPUT
@@ -213,38 +354,42 @@ jobs:
           tags: |
             ${{ steps.tags.outputs.tags_with_timestamp }}
 
+      - name: Build context path
+        id: context
+        run: |
+          # 确定构建上下文路径
+          if [ -n "${{ matrix.context }}" ]; then
+            CONTEXT="sources/${{ matrix.source }}/${{ matrix.context }}"
+          else
+            CONTEXT="sources/${{ matrix.source }}"
+          fi
+          echo "context=${CONTEXT}" >> $GITHUB_OUTPUT
+          echo "Build context: ${CONTEXT}"
+
       - name: Set cache config
         id: cache
         run: |
-          # 始终使用 GHA 缓存作为读取源（更可靠）
-          CACHE_FROM="type=gha"
-
-          # 推送时同时写入 registry 缓存和 GHA 缓存
-          if [ "${{ github.event.inputs.push }}" != "false" ]; then
-            CACHE_TO="type=gha,mode=max"
-          else
-            CACHE_TO="type=gha,mode=max"
-          fi
-          echo "cache_from=${CACHE_FROM}" >> $GITHUB_OUTPUT
-          echo "cache_to=${CACHE_TO}" >> $GITHUB_OUTPUT
+          echo "cache_from=type=gha" >> $GITHUB_OUTPUT
+          echo "cache_to=type=gha,mode=max" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          platforms: ${{ matrix.platforms }}
+          context: ${{ steps.context.outputs.context }}
+          file: sources/${{ matrix.source }}/${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
           push: ${{ github.event.inputs.push != 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ toJson(matrix.build_args) }}
+          build-args: |
+            ${{ matrix.build_args != '' && format('{0}', matrix.build_args) || '' }}
           cache-from: ${{ steps.cache.outputs.cache_from }}
           cache-to: ${{ steps.cache.outputs.cache_to }}
 
       - name: Pull image for scanning
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
         run: |
-          docker pull --platform ${{ matrix.platforms }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
+          docker pull --platform ${{ matrix.platform }} ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.repository }}:${{ steps.tags.outputs.first_tag_with_timestamp }}
 
       - name: Run Trivy vulnerability scanner
         if: github.event.inputs.skip_scan != 'true' && github.event.inputs.push != 'false'
@@ -296,7 +441,6 @@ jobs:
         id: build_info
         if: always()
         run: |
-          # 输出构建状态
           if [ "${{ job.status }}" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
@@ -304,17 +448,16 @@ jobs:
           fi
           echo "image_name=${{ matrix.image_name }}" >> $GITHUB_OUTPUT
           echo "repository=${{ matrix.repository }}" >> $GITHUB_OUTPUT
-          echo "platform=${{ matrix.platforms }}" >> $GITHUB_OUTPUT
+          echo "platform=${{ matrix.platform }}" >> $GITHUB_OUTPUT
           echo "first_tag=${{ steps.tags.outputs.first_tag_with_timestamp }}" >> $GITHUB_OUTPUT
 
-          # 创建构建信息文件供 summary 使用
           mkdir -p build-info
           cat > build-info/info.json << EOF
           {
             "status": "${{ job.status }}",
             "image_name": "${{ matrix.image_name }}",
             "repository": "${{ matrix.repository }}",
-            "platform": "${{ matrix.platforms }}",
+            "platform": "${{ matrix.platform }}",
             "first_tag": "${{ steps.tags.outputs.first_tag_with_timestamp }}",
             "registry": "${{ env.REGISTRY }}",
             "org": "${{ env.ORG }}"
@@ -357,7 +500,6 @@ jobs:
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # 统计构建数量
           total_builds=$(find build-infos -name "info.json" 2>/dev/null | wc -l)
           success_builds=$(find build-infos -name "info.json" -exec grep -l '"status": "success"' {} \; 2>/dev/null | wc -l)
           failed_builds=$((total_builds - success_builds))
@@ -371,10 +513,8 @@ jobs:
           echo "| ❌ 失败 | $failed_builds |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # 镜像列表和下载命令
           echo "### 📦 构建镜像" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
           echo "| 镜像 | 平台 | 标签 | 下载命令 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|------|----------|" >> $GITHUB_STEP_SUMMARY
 
@@ -399,39 +539,32 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # 漏洞扫描总结
           if [ "${{ github.event.inputs.skip_scan }}" != "true" ] && [ "${{ github.event.inputs.push }}" != "false" ]; then
             echo "### 🔒 安全扫描结果" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-
             echo "| 镜像标签 | CRITICAL | HIGH | MEDIUM | LOW | 状态 |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|----------|------|--------|-----|------|" >> $GITHUB_STEP_SUMMARY
 
             for report_dir in trivy-reports/trivy-report-*; do
               if [ -d "$report_dir" ]; then
-                # 获取标签名
                 tag=$(basename "$report_dir")
                 report_file=$(find "$report_dir" -name "*.txt" | head -1)
 
                 if [ -f "$report_file" ]; then
-                  # 解析 Trivy Total 行获取漏洞统计
                   total_line=$(grep -E "^Total:" "$report_file" | tail -1)
 
                   if [ -n "$total_line" ]; then
-                    # 解析: Total: 5 (UNKNOWN: 0, LOW: 1, MEDIUM: 2, HIGH: 1, CRITICAL: 1)
                     critical=$(echo "$total_line" | grep -oP 'CRITICAL:\s*\K\d+' || echo "0")
                     high=$(echo "$total_line" | grep -oP 'HIGH:\s*\K\d+' || echo "0")
                     medium=$(echo "$total_line" | grep -oP 'MEDIUM:\s*\K\d+' || echo "0")
                     low=$(echo "$total_line" | grep -oP 'LOW:\s*\K\d+' || echo "0")
                   else
-                    # 如果没有 Total 行，可能是无漏洞或解析失败
                     critical=0
                     high=0
                     medium=0
                     low=0
                   fi
 
-                  # 判断安全状态
                   if [ "$critical" -gt 0 ]; then
                     status="🔴 存在严重漏洞"
                   elif [ "$high" -gt 0 ]; then
@@ -452,7 +585,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # 构建产物说明
           echo "### 📁 构建产物" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "本次构建生成以下产物（保留 30 天）：" >> $GITHUB_STEP_SUMMARY
@@ -464,7 +596,6 @@ jobs:
           echo "| SBOM (CycloneDX) | \`sbom-<tag>.cdx.json\` | CycloneDX 格式软件物料清单 |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # 构建信息
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ℹ️ 构建信息" >> $GITHUB_STEP_SUMMARY

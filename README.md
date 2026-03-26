@@ -25,9 +25,7 @@ image-factory/
 │   ├── LESSONS-LEARNED.md    # 错误案例记录
 │   └── PRD.md                # 产品需求文档
 ├── scripts/
-│   ├── clone-sources.py      # 克隆源仓库
-│   ├── scan-dockerfiles.py   # 生成构建矩阵
-│   └── validate-config.py    # 校验配置文件
+│   └── validate-config.py    # 校验配置文件（本地开发工具）
 ├── CLAUDE.md                 # Claude Code 开发指南
 ├── CONTRIBUTING.md           # 贡献指南
 └── README.md                 # 本文档
@@ -40,8 +38,6 @@ image-factory/
 | `.claude/skills/add-image-config.md` | Claude Code skill，自动化添加镜像配置 |
 | `.github/workflows/build-images.yml` | GitHub Actions 工作流定义 |
 | `config/*-images.yml` | 镜像构建配置，每个项目一个文件 |
-| `scripts/clone-sources.py` | 根据配置克隆源代码仓库 |
-| `scripts/scan-dockerfiles.py` | 扫描 Dockerfile 生成构建矩阵 |
 | `scripts/validate-config.py` | 本地校验配置文件格式 |
 | `docs/ARCHITECTURE.md` | 系统架构和执行流程 |
 | `docs/CONFIGURATION.md` | 配置项详细说明 |
