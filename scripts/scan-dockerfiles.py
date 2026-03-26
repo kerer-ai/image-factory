@@ -201,7 +201,7 @@ def generate_matrix(
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scan Dockerfiles and generate build matrix')
-    parser.add_argument('--config', required=True, nargs='+', help='Path to config file(s)')
+    parser.add_argument('--config', required=True, action='append', help='Path to config file (can be specified multiple times)')
     parser.add_argument('--sources', required=True, help='Directory containing cloned sources')
     parser.add_argument('--output', required=True, help='Output JSON file path')
 
