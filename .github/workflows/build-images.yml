@@ -110,7 +110,12 @@ jobs:
         id: scan
         run: |
           configs='${{ needs.prepare.outputs.configs }}'
-          config_args=$(echo "$configs" | jq -r '.[]' | xargs -I {} echo "--config {}")
+          # 将配置文件列表转换为参数数组
+          config_args=""
+          for config in $(echo "$configs" | jq -r '.[]'); do
+            config_args="$config_args --config $config"
+          done
+          echo "Running: python3 scripts/scan-dockerfiles.py $config_args --sources sources/ --output matrix.json"
           python3 scripts/scan-dockerfiles.py \
             $config_args \
             --sources sources/ \
